@@ -13,10 +13,30 @@ const axios = require('axios');
 const app = express();
 const PORT = process.env.SERVER_PORT || 3000; // 환경변수로 백엔드 포트 설정 가능
 
+// CORS 설정을 환경변수로 관리
+// 기본적으로 지원할 포트들
+const defaultPorts = ['5173', '3030'];
+
+// 환경변수에서 추가 포트 목록 가져오기
+const additionalPorts = process.env.ALLOWED_FRONTEND_PORTS 
+  ? process.env.ALLOWED_FRONTEND_PORTS.split(',') 
+  : [];
+
+// 허용할 모든 포트 목록 생성
+const allowedPorts = [...new Set([...defaultPorts, ...additionalPorts])];
+
+// 허용할 원본 목록 생성
+const allowedOrigins = [];
+for (const port of allowedPorts) {
+  allowedOrigins.push(`http://localhost:${port}`);
+  allowedOrigins.push(`http://127.0.0.1:${port}`);
+}
+
+console.log(`[${new Date().toISOString()}] 허용된 프론트엔드 원본:`, allowedOrigins);
+
 // Express 미들웨어 설정
 app.use(cors({
-  // 프론트엔드 포트를 허용 목록에 추가 (3030으로 변경한 경우)
-  origin: ['http://localhost:5173', 'http://127.0.0.1:5173', 'http://localhost:3030', 'http://127.0.0.1:3030'],
+  origin: allowedOrigins,
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
   credentials: true
 }));
