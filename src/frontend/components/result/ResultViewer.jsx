@@ -9,6 +9,11 @@ import Button from '../common/Button.jsx';
 function ResultViewer({ taskId, versionId }) {
   const { 
     tasks, 
+    versions, // versions 가져오기
+    llmEndpoints, // llmEndpoints 가져오기
+    historyFilters, // historyFilters 가져오기
+    setHistoryFilters, // setHistoryFilters 가져오기
+    getFilteredResults, // 필터링된 결과 가져오기
     getVersionResults, 
     compareVersions
   } = useStore();
@@ -22,8 +27,8 @@ function ResultViewer({ taskId, versionId }) {
   useEffect(() => {
     if (taskId && versionId) {
       const versionResults = getVersionResults(taskId, versionId);
-      setResults(versionResults || []);
       
+      // 'latest' 탭에서는 현재 버전의 결과 사용
       if (versionResults && versionResults.length > 0) {
         setSelectedResult(versionResults[0]);
       } else {
@@ -31,6 +36,14 @@ function ResultViewer({ taskId, versionId }) {
       }
     }
   }, [taskId, versionId, getVersionResults]);
+
+  // historyFilters 또는 tasks가 변경될 때마다 필터링된 결과 업데이트
+  useEffect(() => {
+    if (activeTab === 'history') {
+      const filtered = getFilteredResults();
+      setResults(filtered);
+    }
+  }, [activeTab, getFilteredResults]);
   
   // 탭 정의
   const tabs = [
@@ -50,6 +63,14 @@ function ResultViewer({ taskId, versionId }) {
       </div>
     );
   }
+
+  // 필터 변경 핸들러
+  const handleFilterChange = (filterName, value) => {
+    setHistoryFilters(prev => ({
+      ...prev,
+      [filterName]: value
+    }));
+  };
   
   return (
     <div className="h-full flex flex-col">
@@ -74,6 +95,11 @@ function ResultViewer({ taskId, versionId }) {
                     <span className="text-sm text-gray-500 dark:text-gray-400">
                       실행 시각: {new Date(selectedResult.timestamp || 0).toLocaleString()}
                     </span>
+                    {selectedResult.output?.model && (
+                      <span className="text-sm text-gray-500 dark:text-gray-400 ml-4">
+                        모델: {selectedResult.output.model}
+                      </span>
+                    )}
                   </div>
                   <div>
                     <Button 
@@ -111,11 +137,80 @@ function ResultViewer({ taskId, versionId }) {
         )}
         
         {activeTab === 'history' && (
-          <ResultHistory 
-            results={results}
-            selectedResult={selectedResult}
-            onSelectResult={setSelectedResult}
-          />
+          <>
+            {/* 필터링 UI 추가 */}
+            <div className="p-4 border-b border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
+              <div className="flex flex-wrap gap-4 items-center">
+                <div className="flex items-center gap-2">
+                  <label htmlFor="version-filter" className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    버전:
+                  </label>
+                  <select
+                    id="version-filter"
+                    className="px-3 py-1 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    value={historyFilters.versionId || ''}
+                    onChange={(e) => handleFilterChange('versionId', e.target.value || null)}
+                  >
+                    <option value="">모든 버전</option>
+                    {versions.map(v => (
+                      <option key={v.id} value={v.id}>
+                        {v.name || v.id}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <label htmlFor="model-filter" className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    모델:
+                  </label>
+                  <select
+                    id="model-filter"
+                    className="px-3 py-1 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    value={historyFilters.model}
+                    onChange={(e) => handleFilterChange('model', e.target.value)}
+                  >
+                    <option value="all">모든 모델</option>
+                    {llmEndpoints.map(ep => (
+                      ep.defaultModel && (
+                        <option key={ep.id} value={ep.defaultModel}>
+                          {ep.name} ({ep.defaultModel})
+                        </option>
+                      )
+                    ))}
+                    <option value="mock-model">Mock Model</option>
+                  </select>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <label htmlFor="date-filter" className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    날짜:
+                  </label>
+                  <select
+                    id="date-filter"
+                    className="px-3 py-1 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    value={historyFilters.dateRange}
+                    onChange={(e) => handleFilterChange('dateRange', e.target.value)}
+                  >
+                    <option value="all">모든 날짜</option>
+                    <option value="today">오늘</option>
+                    <option value="last7days">지난 7일</option>
+                    <option value="last30days">지난 30일</option>
+                  </select>
+                </div>
+
+                <div className="text-sm text-gray-600 dark:text-gray-400">
+                  총 {results.length}개 결과
+                </div>
+              </div>
+            </div>
+            
+            <ResultHistory 
+              results={results}
+              selectedResult={selectedResult}
+              onSelectResult={setSelectedResult}
+            />
+          </>
         )}
         
         {activeTab === 'compare' && (

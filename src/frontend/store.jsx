@@ -60,7 +60,69 @@ export const PromptProvider = ({ children }) => {
   const [activeLlmEndpointId, setActiveLlmEndpointId] = useState(null); // 현재 사용 중인 엔드포인트 ID
   const [defaultLlmEndpointId, setDefaultLlmEndpointId] = useState(null); // 기본값 엔드포인트 ID
   
-  // 서버 상태 체크 함수
+  // 이력 필터링 상태 추가
+  const [historyFilters, setHistoryFilters] = useState({
+    versionId: null, // 특정 버전으로 필터링
+    model: 'all',    // 특정 모델로 필터링 (all, gpt-4o, mistralai/Mistral-7B-Instruct-v0.2 등)
+    dateRange: 'all' // 날짜 범위 필터링 (all, today, last7days, last30days 등)
+  });
+  
+  // 이력 필터링 함수 추가
+  const getFilteredResults = useCallback(() => {
+    let filtered = [];
+    if (!currentTask) return filtered;
+
+    const task = tasks[currentTask];
+    if (!task || !task.versions) return filtered;
+
+    task.versions.forEach(version => {
+      // 버전 필터링
+      if (historyFilters.versionId && version.id !== historyFilters.versionId) {
+        return;
+      }
+
+      if (version.results) {
+        version.results.forEach(result => {
+          // 모델 필터링
+          if (historyFilters.model !== 'all' && result.output?.model !== historyFilters.model) {
+            return;
+          }
+
+          // 날짜 필터링
+          const resultDate = new Date(result.timestamp);
+          const now = new Date();
+          let passDateFilter = true;
+
+          if (historyFilters.dateRange === 'today') {
+            if (resultDate.toDateString() !== now.toDateString()) {
+              passDateFilter = false;
+            }
+          } else if (historyFilters.dateRange === 'last7days') {
+            const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+            if (resultDate < sevenDaysAgo) {
+              passDateFilter = false;
+            }
+          } else if (historyFilters.dateRange === 'last30days') {
+            const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+            if (resultDate < thirtyDaysAgo) {
+              passDateFilter = false;
+            }
+          }
+
+          if (passDateFilter) {
+            filtered.push({
+              ...result,
+              versionId: version.id, // 결과에 버전 ID 추가
+              versionName: version.name // 결과에 버전 이름 추가
+            });
+          }
+        });
+      }
+    });
+
+    // 최신순 정렬
+    return filtered.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+  }, [currentTask, tasks, historyFilters]);
   const checkServerStatus = useCallback(async () => {
     try {
       setServerStatus('checking');
@@ -1256,6 +1318,11 @@ export const PromptProvider = ({ children }) => {
       llmEndpoints,
       activeLlmEndpointId,
       defaultLlmEndpointId,
+      
+      // 이력 필터링 상태 및 함수 추가
+      historyFilters,
+      setHistoryFilters,
+      getFilteredResults,
       
       // 함수
       loadTasks,
