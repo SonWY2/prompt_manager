@@ -12,12 +12,14 @@ function PromptEditor({ taskId, versionId }) {
     loadVersions,
     addVersion,
     updatePromptContent,
+    updateSystemPromptContent, // System Prompt 업데이트 함수 추가
     savePromptContent,
     deleteVersion,
     getVersionDetail,
     extractVariables,
     updateVariables,
     setCurrentVersion,
+    currentSystemPrompt, // 현재 선택된 버전의 system prompt 상태 추가
     isEditMode, // 전역 편집 모드 상태 사용
     setIsEditMode, // 편집 모드 설정 함수
     templateVariables,
@@ -26,6 +28,7 @@ function PromptEditor({ taskId, versionId }) {
   } = useStore();
   
   const [promptContent, setPromptContent] = useState('');
+  const [systemPromptContent, setSystemPromptContent] = useState(''); // 로컬 system prompt 상태 추가
   const [showPreview, setShowPreview] = useState(false);
   const [renderedPrompt, setRenderedPrompt] = useState('');
   const [variableValues, setVariableValues] = useState({});
@@ -67,12 +70,13 @@ function PromptEditor({ taskId, versionId }) {
     };
   }, [taskId]); // loadVersions 의존성 제거
   
-  // 버전 변경 시 프롬프트 내용 설정
+  // 버전 변경 시 프롬프트 내용 및 system prompt 설정
   useEffect(() => {
     if (versionId && versions.length > 0) {
       const version = versions.find(v => v.id === versionId);
       if (version) {
         setPromptContent(version.content || '');
+        setSystemPromptContent(version.system_prompt || 'You are a helpful assistant.'); // system prompt 설정
         setVersionInfo({
           name: version.name || version.id,
           description: version.description || ''
@@ -91,18 +95,25 @@ function PromptEditor({ taskId, versionId }) {
         });
       }
     } else {
-      // 버전이 없는 경우에는 편집 모드 활성화
+      // 버전이 없는 경우에는 편집 모드 활성화 및 기본 system prompt 설정
       setIsEditMode(true);
+      setSystemPromptContent('You are a helpful assistant.');
     }
   }, [versionId, versions, extractVariables, setIsEditMode]);
   
-  // 프롬프트 미리보기 렌더링
+  // currentSystemPrompt 상태와 로컬 systemPromptContent 동기화
+  useEffect(() => {
+    setSystemPromptContent(currentSystemPrompt || 'You are a helpful assistant.');
+  }, [currentSystemPrompt]);
+  
+  // 프롬프트 미리보기 렌더링 (System Prompt 포함)
   useEffect(() => {
     if (showPreview) {
       const rendered = renderPrompt(promptContent, variableValues);
-      setRenderedPrompt(rendered);
+      const fullPreview = `**System Prompt:**\n${systemPromptContent}\n\n**User Prompt:**\n${rendered}`;
+      setRenderedPrompt(fullPreview);
     }
-  }, [showPreview, promptContent, variableValues, renderPrompt]);
+  }, [showPreview, promptContent, systemPromptContent, variableValues, renderPrompt]);
   
   // 변수 값 업데이트
   const handleVariableChange = (varName, value, action = 'update') => {
@@ -142,7 +153,7 @@ function PromptEditor({ taskId, versionId }) {
   // 새 버전 생성
   const handleCreateVersion = () => {
     const newVersionId = `v${Date.now()}`;
-    addVersion(taskId, newVersionId, promptContent, versionInfo.description, versionInfo.name);
+    addVersion(taskId, newVersionId, promptContent, systemPromptContent, versionInfo.description, versionInfo.name);
   };
   
   // 버전 정보 업데이트
@@ -156,7 +167,7 @@ function PromptEditor({ taskId, versionId }) {
   // LLM 호출
   const handleExecute = async () => {
     try {
-      await callLLM(taskId, versionId, variableValues);
+      await callLLM(taskId, versionId, variableValues, systemPromptContent);
     } catch (error) {
       console.error("Failed to execute prompt:", error);
       alert("프롬프트 실행 중 오류가 발생했습니다.");
@@ -221,6 +232,16 @@ function PromptEditor({ taskId, versionId }) {
                 placeholder="예: 변수 추가, 지시문 개선, 결과물 길이 제한 추가"
                 value={versionInfo.description}
                 onChange={(e) => handleVersionInfoChange('description', e.target.value)}
+              />
+            </div>
+            
+            <div>
+              <label className="block text-sm font-medium mb-1">System Prompt</label>
+              <textarea
+                className="w-full h-20 p-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 dark:text-white resize-none"
+                placeholder="System prompt를 입력하세요... (비워두면 기본값 사용)"
+                value={systemPromptContent}
+                onChange={(e) => setSystemPromptContent(e.target.value)}
               />
             </div>
             
@@ -360,6 +381,24 @@ function PromptEditor({ taskId, versionId }) {
               </div>
             )}
             
+            {/* System Prompt 필드 */}
+            <div className="mb-3">
+              <label className="block text-sm font-medium mb-1">System Prompt</label>
+              <textarea
+                value={systemPromptContent}
+                onChange={(e) => {
+                  setSystemPromptContent(e.target.value);
+                  updateSystemPromptContent(e.target.value);
+                }}
+                className={`w-full h-20 p-2 border border-gray-300 dark:border-gray-600 rounded 
+                  ${isEditMode 
+                    ? 'bg-white dark:bg-gray-700 dark:text-white focus:ring-2 focus:ring-blue-500' 
+                    : 'bg-gray-100 dark:bg-gray-800 cursor-not-allowed'}`}
+                placeholder="System prompt를 입력하세요... (비워두면 기본값 사용)"
+                disabled={!isEditMode}
+              />
+            </div>
+            
             <textarea
               value={promptContent}
               onChange={(e) => {
@@ -406,7 +445,7 @@ function PromptEditor({ taskId, versionId }) {
               <Button 
                 variant="primary"
                 onClick={() => {
-                  savePromptContent(taskId, versionId, promptContent, versionInfo);
+                  savePromptContent(taskId, versionId, promptContent, systemPromptContent, versionInfo);
                   setIsEditMode(false);
                 }}
               >

@@ -1,4 +1,4 @@
-
+// Template rendering function
 
 // 환경 변수 로드 - dotenv가 없는 경우 처리
 try {
@@ -18,6 +18,7 @@ const bodyParser = require('body-parser');
 const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
+const { callLLM } = require('./lib/llm.js'); // LLM 모듈 import
 
 const app = express();
 const PORT = process.env.SERVER_PORT || 3000; // 환경변수로 백엔드 포트 설정 가능
@@ -122,6 +123,13 @@ let promptData = {
   versionHistory: {}
 };
 
+// In-memory LLM endpoints data
+let llmEndpointsData = {
+  endpoints: [],
+  activeEndpointId: null,
+  defaultEndpointId: null
+};
+
 // Load existing data from file
 const dataPath = path.join(__dirname, '../../data/prompt-data.json');
 if (fs.existsSync(dataPath)) {
@@ -135,6 +143,21 @@ if (fs.existsSync(dataPath)) {
   }
 } else {
   console.log(`[${new Date().toISOString()}] 데이터 파일이 없습니다. 새 파일을 생성합니다:`, dataPath);
+}
+
+// Load LLM endpoints data
+const llmEndpointsPath = path.join(__dirname, '../../data/llm-endpoints.json');
+if (fs.existsSync(llmEndpointsPath)) {
+  try {
+    const data = fs.readFileSync(llmEndpointsPath, 'utf-8');
+    llmEndpointsData = JSON.parse(data);
+    console.log(`[${new Date().toISOString()}] LLM endpoints 데이터 로드 성공:`, llmEndpointsPath);
+    console.log(`[${new Date().toISOString()}] 엔드포인트 수:`, llmEndpointsData.endpoints.length);
+  } catch (error) {
+    console.error(`[${new Date().toISOString()}] LLM endpoints 데이터 로드 오류:`, error);
+  }
+} else {
+  console.log(`[${new Date().toISOString()}] LLM endpoints 파일이 없습니다. 새 파일을 생성합니다.`);
 }
 
 // API Endpoints
@@ -245,14 +268,15 @@ app.get('/api/tasks/:taskId/versions/:versionId', (req, res) => {
 
 app.post('/api/tasks/:taskId/versions', (req, res) => {
   const { taskId } = req.params;
-  const { versionId, content, description, name } = req.body;
+  const { versionId, content, description, name, system_prompt } = req.body;
   
   console.log(`[${new Date().toISOString()}] 버전 생성 요청:`, {
     taskId,
     versionId,
     name,
     description: description?.substring(0, 30) + (description?.length > 30 ? '...' : ''),
-    contentLength: content?.length || 0
+    contentLength: content?.length || 0,
+    systemPromptLength: system_prompt?.length || 0
   });
   
   if (!promptData.tasks[taskId]) {
@@ -274,6 +298,7 @@ app.post('/api/tasks/:taskId/versions', (req, res) => {
   promptData.tasks[taskId].versions.unshift({
     id: versionId,
     content,
+    system_prompt: system_prompt || "You are a helpful assistant.",
     description,
     name: displayName,
     createdAt: new Date().toISOString(),
@@ -293,7 +318,7 @@ app.post('/api/tasks/:taskId/versions', (req, res) => {
 // 새로 추가: 버전 업데이트 API
 app.put('/api/tasks/:taskId/versions/:versionId', (req, res) => {
   const { taskId, versionId } = req.params;
-  const { content, name, description } = req.body;
+  const { content, name, description, system_prompt } = req.body;
   
   if (!promptData.tasks[taskId]) {
     return res.status(404).json({ error: 'Task not found' });
@@ -308,6 +333,7 @@ app.put('/api/tasks/:taskId/versions/:versionId', (req, res) => {
   promptData.tasks[taskId].versions[versionIndex] = {
     ...promptData.tasks[taskId].versions[versionIndex],
     content: content !== undefined ? content : promptData.tasks[taskId].versions[versionIndex].content,
+    system_prompt: system_prompt !== undefined ? system_prompt : promptData.tasks[taskId].versions[versionIndex].system_prompt,
     name: name !== undefined ? name : promptData.tasks[taskId].versions[versionIndex].name,
     description: description !== undefined ? description : promptData.tasks[taskId].versions[versionIndex].description,
     updatedAt: new Date().toISOString()
@@ -458,7 +484,7 @@ app.post('/api/templates/:taskId/variables', (req, res) => {
 
 // 4. LLM API Integration
 app.post('/api/llm/call', async (req, res) => {
-  const { taskId, versionId, inputData } = req.body;
+  const { taskId, versionId, inputData, system_prompt, endpoint } = req.body;
   
   // Find the task and version
   const task = promptData.tasks[taskId];
@@ -474,9 +500,39 @@ app.post('/api/llm/call', async (req, res) => {
   // Replace placeholders with input data
   const renderedPrompt = renderTemplate(version.content, inputData);
   
+  // Use system prompt from request body, version, or default
+  const systemPromptToUse = system_prompt || version.system_prompt || "You are a helpful assistant.";
+  
+  // LLM endpoint 정보 결정
+  let llmConfig = {
+    baseUrl: process.env.OPENAI_BASE_URL || 'http://localhost:8000/v1',
+    apiKey: process.env.OPENAI_API_KEY || '',
+    model: process.env.OPENAI_MODEL || 'mistralai/Mistral-7B-Instruct-v0.2'
+  };
+  
+  // 프런트엔드에서 전달된 endpoint 정보가 있으면 사용
+  if (endpoint && endpoint.baseUrl) {
+    llmConfig = {
+      baseUrl: endpoint.baseUrl,
+      apiKey: endpoint.apiKey || '',
+      model: endpoint.defaultModel || llmConfig.model
+    };
+    console.log(`[${new Date().toISOString()}] 사용자 정의 엔드포인트 사용:`, {
+      baseUrl: llmConfig.baseUrl,
+      model: llmConfig.model,
+      hasApiKey: !!llmConfig.apiKey
+    });
+  } else {
+    // 활성화된 엔드포인트가 없으면 기본값 사용
+    console.log(`[${new Date().toISOString()}] 기본 엔드포인트 사용 (환경변수):`, {
+      baseUrl: llmConfig.baseUrl,
+      model: llmConfig.model
+    });
+  }
+  
   try {
     // Store the LLM result
-    const result = await callLLM(renderedPrompt);
+    const result = await callLLM(renderedPrompt, systemPromptToUse, llmConfig);
     
     if (!version.results) {
       version.results = [];
@@ -656,76 +712,201 @@ app.delete('/api/groups/:groupName', (req, res) => {
   }
 });
 
-// Template rendering function
+// 8. LLM Endpoints Management APIs
+// LLM 엔드포인트 목록 조회
+app.get('/api/llm-endpoints', (req, res) => {
+  try {
+    res.json({
+      endpoints: llmEndpointsData.endpoints || [],
+      activeEndpointId: llmEndpointsData.activeEndpointId,
+      defaultEndpointId: llmEndpointsData.defaultEndpointId
+    });
+  } catch (error) {
+    console.error(`[${new Date().toISOString()}] LLM 엔드포인트 목록 조회 오류:`, error);
+    res.status(500).json({ error: 'Failed to fetch LLM endpoints' });
+  }
+});
+
+// LLM 엔드포인트 추가
+app.post('/api/llm-endpoints', (req, res) => {
+  try {
+    const { name, baseUrl, apiKey, defaultModel, description } = req.body;
+    
+    if (!name || !baseUrl) {
+      return res.status(400).json({ error: 'Name and baseUrl are required' });
+    }
+    
+    const endpointId = `llm-ep-${Date.now()}`;
+    const newEndpoint = {
+      id: endpointId,
+      name: name.trim(),
+      baseUrl: baseUrl.trim(),
+      apiKey: apiKey || '',
+      defaultModel: defaultModel || '',
+      description: description || '',
+      isDefault: false,
+      createdAt: new Date().toISOString()
+    };
+    
+    llmEndpointsData.endpoints.push(newEndpoint);
+    
+    // 첫 번째 엔드포인트라면 자동으로 활성화
+    if (llmEndpointsData.endpoints.length === 1) {
+      llmEndpointsData.activeEndpointId = endpointId;
+      llmEndpointsData.defaultEndpointId = endpointId;
+      newEndpoint.isDefault = true;
+    }
+    
+    saveLlmEndpointsData();
+    
+    console.log(`[${new Date().toISOString()}] LLM 엔드포인트 추가 성공:`, newEndpoint.name);
+    
+    res.status(201).json({
+      success: true,
+      endpoint: newEndpoint
+    });
+  } catch (error) {
+    console.error(`[${new Date().toISOString()}] LLM 엔드포인트 추가 오류:`, error);
+    res.status(500).json({ error: 'Failed to create LLM endpoint' });
+  }
+});
+
+// LLM 엔드포인트 업데이트
+app.put('/api/llm-endpoints/:id', (req, res) => {
+  try {
+    const { id } = req.params;
+    const updates = req.body;
+    
+    const endpointIndex = llmEndpointsData.endpoints.findIndex(ep => ep.id === id);
+    if (endpointIndex === -1) {
+      return res.status(404).json({ error: 'LLM endpoint not found' });
+    }
+    
+    // 엔드포인트 정보 업데이트
+    llmEndpointsData.endpoints[endpointIndex] = {
+      ...llmEndpointsData.endpoints[endpointIndex],
+      ...updates,
+      updatedAt: new Date().toISOString()
+    };
+    
+    saveLlmEndpointsData();
+    
+    console.log(`[${new Date().toISOString()}] LLM 엔드포인트 업데이트 성공:`, id);
+    
+    res.json({
+      success: true,
+      endpoint: llmEndpointsData.endpoints[endpointIndex]
+    });
+  } catch (error) {
+    console.error(`[${new Date().toISOString()}] LLM 엔드포인트 업데이트 오류:`, error);
+    res.status(500).json({ error: 'Failed to update LLM endpoint' });
+  }
+});
+
+// LLM 엔드포인트 삭제
+app.delete('/api/llm-endpoints/:id', (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const endpointIndex = llmEndpointsData.endpoints.findIndex(ep => ep.id === id);
+    if (endpointIndex === -1) {
+      return res.status(404).json({ error: 'LLM endpoint not found' });
+    }
+    
+    const deletedEndpoint = llmEndpointsData.endpoints[endpointIndex];
+    
+    // 엔드포인트 삭제
+    llmEndpointsData.endpoints.splice(endpointIndex, 1);
+    
+    // 삭제된 엔드포인트가 활성화된 것이거나 기본값이었다면 다른 것으로 변경
+    if (llmEndpointsData.activeEndpointId === id || llmEndpointsData.defaultEndpointId === id) {
+      if (llmEndpointsData.endpoints.length > 0) {
+        const newActiveId = llmEndpointsData.endpoints[0].id;
+        llmEndpointsData.activeEndpointId = newActiveId;
+        llmEndpointsData.defaultEndpointId = newActiveId;
+        llmEndpointsData.endpoints[0].isDefault = true;
+      } else {
+        llmEndpointsData.activeEndpointId = null;
+        llmEndpointsData.defaultEndpointId = null;
+      }
+    }
+    
+    saveLlmEndpointsData();
+    
+    console.log(`[${new Date().toISOString()}] LLM 엔드포인트 삭제 성공:`, deletedEndpoint.name);
+    
+    res.json({
+      success: true,
+      message: `LLM endpoint '${deletedEndpoint.name}' deleted successfully`
+    });
+  } catch (error) {
+    console.error(`[${new Date().toISOString()}] LLM 엔드포인트 삭제 오류:`, error);
+    res.status(500).json({ error: 'Failed to delete LLM endpoint' });
+  }
+});
+
+// 활성 LLM 엔드포인트 설정
+app.post('/api/llm-endpoints/:id/activate', (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const endpoint = llmEndpointsData.endpoints.find(ep => ep.id === id);
+    if (!endpoint) {
+      return res.status(404).json({ error: 'LLM endpoint not found' });
+    }
+    
+    llmEndpointsData.activeEndpointId = id;
+    saveLlmEndpointsData();
+    
+    console.log(`[${new Date().toISOString()}] 활성 LLM 엔드포인트 설정:`, endpoint.name);
+    
+    res.json({
+      success: true,
+      activeEndpointId: id
+    });
+  } catch (error) {
+    console.error(`[${new Date().toISOString()}] 활성 LLM 엔드포인트 설정 오류:`, error);
+    res.status(500).json({ error: 'Failed to set active LLM endpoint' });
+  }
+});
+
+// 기본 LLM 엔드포인트 설정
+app.post('/api/llm-endpoints/:id/set-default', (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const endpoint = llmEndpointsData.endpoints.find(ep => ep.id === id);
+    if (!endpoint) {
+      return res.status(404).json({ error: 'LLM endpoint not found' });
+    }
+    
+    // 기존 기본값 제거
+    llmEndpointsData.endpoints.forEach(ep => {
+      ep.isDefault = false;
+    });
+    
+    // 새로운 기본값 설정
+    endpoint.isDefault = true;
+    llmEndpointsData.defaultEndpointId = id;
+    
+    saveLlmEndpointsData();
+    
+    console.log(`[${new Date().toISOString()}] 기본 LLM 엔드포인트 설정:`, endpoint.name);
+    
+    res.json({
+      success: true,
+      defaultEndpointId: id
+    });
+  } catch (error) {
+    console.error(`[${new Date().toISOString()}] 기본 LLM 엔드포인트 설정 오류:`, error);
+    res.status(500).json({ error: 'Failed to set default LLM endpoint' });
+  }
+});
 function renderTemplate(template = "", data = {}) {
   return template.replace(/{{(.*?)}}/g, (_, key) => {
     const trimmedKey = key.trim();
     return data[trimmedKey] !== undefined ? data[trimmedKey] : '';
   });
-}
-
-// LLM API 호출 함수 (OpenAI 호환 API 사용)
-async function callLLM(prompt) {
-  console.log(`[${new Date().toISOString()}] LLM API 호출 시작 - 길이: ${prompt.length} 문자`);
-  
-  try {
-    // 환경변수에서 설정 값 가져오기
-    const baseUrl = process.env.OPENAI_BASE_URL || 'http://localhost:8000/v1'; // 기본값
-    const model = process.env.OPENAI_MODEL || 'mistralai/Mistral-7B-Instruct-v0.2'; // 기본값
-    
-    console.log(`[${new Date().toISOString()}] API 설정 - URL: ${baseUrl}, 모델: ${model}`);
-    
-    // vLLM 서버로 요청 보내기
-    const response = await axios.post(`${baseUrl}/chat/completions`, {
-      model: model,
-      messages: [
-        { role: "system", content: "You are a helpful assistant." },
-        { role: "user", content: prompt }
-      ],
-      temperature: 0.7,
-      max_tokens: 1024
-    }, {
-      headers: {
-        'Content-Type': 'application/json'
-      }
-    });
-    
-    // 응답 처리
-    const assistantResponse = response.data.choices[0].message.content;
-    console.log(`[${new Date().toISOString()}] LLM API 호출 성공 - 응답 길이: ${assistantResponse.length} 문자`);
-    
-    return {
-      prompt: prompt,
-      response: assistantResponse,
-      timestamp: new Date().toISOString(),
-      model: model
-    };
-  } catch (error) {
-    console.error(`[${new Date().toISOString()}] LLM API 호출 오류:`, error.message);
-    
-    // 오류 발생 시, 기본 응답 사용 (개발 모드에서 유용)
-    if (process.env.NODE_ENV !== 'production') {
-      console.warn(`[${new Date().toISOString()}] 개발 모드: 모의 응답 사용`);
-      
-      const mockResponses = [
-        "프롬프트 매니저를 통해 테스트하고 있는 응답입니다. API 호출 시 오류가 발생하여 모의 응답을 사용합니다.",
-        "서버 연결 오류가 발생하여 모의 응답을 생성합니다. 실제 API 호출이 가능한지 확인해 보세요.",
-        "기본 모의 응답입니다. 환경변수 설정을 확인해주세요."
-      ];
-      
-      const randomResponse = mockResponses[Math.floor(Math.random() * mockResponses.length)];
-      
-      return {
-        prompt: prompt,
-        response: randomResponse + "\n\n[오류 발생] " + error.message + "\n\n입력된 프롬프트: " + prompt.substring(0, 100) + (prompt.length > 100 ? "..." : ""),
-        timestamp: new Date().toISOString(),
-        error: error.message
-      };
-    }
-    
-    // 실제 프로덕션 환경에서는 오류 전파
-    throw new Error(`LLM API 호출 오류: ${error.message}`);
-  }
 }
 
 // Data persistence
@@ -741,6 +922,22 @@ function saveData() {
     console.log(`[${new Date().toISOString()}] 데이터 저장 성공: ${dataPath}`);
   } catch (error) {
     console.error(`[${new Date().toISOString()}] 데이터 저장 오류:`, error);
+  }
+}
+
+// LLM Endpoints data persistence
+function saveLlmEndpointsData() {
+  try {
+    // 디렉토리가 없는 경우 생성
+    const dataDir = path.dirname(llmEndpointsPath);
+    if (!fs.existsSync(dataDir)) {
+      fs.mkdirSync(dataDir, { recursive: true });
+    }
+    
+    fs.writeFileSync(llmEndpointsPath, JSON.stringify(llmEndpointsData, null, 2), 'utf-8');
+    console.log(`[${new Date().toISOString()}] LLM endpoints 데이터 저장 성공: ${llmEndpointsPath}`);
+  } catch (error) {
+    console.error(`[${new Date().toISOString()}] LLM endpoints 데이터 저장 오류:`, error);
   }
 }
 

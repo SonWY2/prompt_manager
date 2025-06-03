@@ -47,12 +47,18 @@ export const PromptProvider = ({ children }) => {
   const [currentTask, setCurrentTask] = useState(getInitialCurrentTask);
   const [versions, setVersions] = useState([]);
   const [currentVersion, setCurrentVersion] = useState(null);
+  const [currentSystemPrompt, setCurrentSystemPrompt] = useState(''); // 현재 선택된 버전의 system prompt 내용
   const [isEditMode, setIsEditMode] = useState(true); // 편집 모드 상태 추가
   const [templateVariables, setTemplateVariables] = useState({});
   const [llmResults, setLLMResults] = useState([]);
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [availableGroups, setAvailableGroups] = useState(getInitialGroups);
   const [serverStatus, setServerStatus] = useState('disconnected'); // 서버 상태 추가
+  
+  // LLM Endpoints 상태 추가
+  const [llmEndpoints, setLlmEndpoints] = useState([]); // 저장된 모든 엔드포인트 목록
+  const [activeLlmEndpointId, setActiveLlmEndpointId] = useState(null); // 현재 사용 중인 엔드포인트 ID
+  const [defaultLlmEndpointId, setDefaultLlmEndpointId] = useState(null); // 기본값 엔드포인트 ID
   
   // 서버 상태 체크 함수
   const checkServerStatus = useCallback(async () => {
@@ -79,7 +85,189 @@ export const PromptProvider = ({ children }) => {
     }
   }, []);
   
-  // 태스크 관리
+  // LLM Endpoints 관리 함수들
+  const loadLlmEndpoints = useCallback(async () => {
+    try {
+      console.log('🔄 LLM Endpoints 로드 시작');
+      
+      const response = await fetch(apiUrl('/api/llm-endpoints'));
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      console.log('✅ LLM Endpoints 로드 성공:', data);
+      
+      setLlmEndpoints(data.endpoints || []);
+      setActiveLlmEndpointId(data.activeEndpointId);
+      setDefaultLlmEndpointId(data.defaultEndpointId);
+      
+      return data;
+    } catch (error) {
+      console.error('❌ LLM Endpoints 로드 실패:', error);
+      // 서버 연결 실패 시 기본값 설정
+      setLlmEndpoints([]);
+      setActiveLlmEndpointId(null);
+      setDefaultLlmEndpointId(null);
+      throw error;
+    }
+  }, []);
+  
+  const addLlmEndpoint = useCallback(async (endpointData) => {
+    try {
+      console.log('➕ LLM Endpoint 추가 시작:', endpointData);
+      
+      const response = await fetch(apiUrl('/api/llm-endpoints'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(endpointData)
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || '엔드포인트 추가 실패');
+      }
+      
+      const data = await response.json();
+      console.log('✅ LLM Endpoint 추가 성공:', data.endpoint);
+      
+      // 상태 업데이트
+      setLlmEndpoints(prev => [...prev, data.endpoint]);
+      
+      // 첫 번째 엔드포인트라면 자동으로 활성화
+      if (data.endpoint.isDefault) {
+        setActiveLlmEndpointId(data.endpoint.id);
+        setDefaultLlmEndpointId(data.endpoint.id);
+      }
+      
+      return data.endpoint;
+    } catch (error) {
+      console.error('❌ LLM Endpoint 추가 오류:', error);
+      throw error;
+    }
+  }, []);
+  
+  const updateLlmEndpoint = useCallback(async (id, updates) => {
+    try {
+      console.log('✏️ LLM Endpoint 업데이트 시작:', { id, updates });
+      
+      const response = await fetch(apiUrl(`/api/llm-endpoints/${id}`), {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updates)
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || '엔드포인트 업데이트 실패');
+      }
+      
+      const data = await response.json();
+      console.log('✅ LLM Endpoint 업데이트 성공:', data.endpoint);
+      
+      // 상태 업데이트
+      setLlmEndpoints(prev => 
+        prev.map(ep => ep.id === id ? data.endpoint : ep)
+      );
+      
+      return data.endpoint;
+    } catch (error) {
+      console.error('❌ LLM Endpoint 업데이트 오류:', error);
+      throw error;
+    }
+  }, []);
+  
+  const deleteLlmEndpoint = useCallback(async (id) => {
+    try {
+      console.log('🗑️ LLM Endpoint 삭제 시작:', id);
+      
+      const response = await fetch(apiUrl(`/api/llm-endpoints/${id}`), {
+        method: 'DELETE'
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || '엔드포인트 삭제 실패');
+      }
+      
+      const data = await response.json();
+      console.log('✅ LLM Endpoint 삭제 성공:', data.message);
+      
+      // 상태 업데이트
+      setLlmEndpoints(prev => prev.filter(ep => ep.id !== id));
+      
+      // 삭제된 엔드포인트가 활성화된 것이었다면 null로 설정
+      if (activeLlmEndpointId === id) {
+        setActiveLlmEndpointId(null);
+      }
+      if (defaultLlmEndpointId === id) {
+        setDefaultLlmEndpointId(null);
+      }
+      
+      return data;
+    } catch (error) {
+      console.error('❌ LLM Endpoint 삭제 오류:', error);
+      throw error;
+    }
+  }, [activeLlmEndpointId, defaultLlmEndpointId]);
+  
+  const setActiveLlmEndpoint = useCallback(async (id) => {
+    try {
+      console.log('🎟️ 활성 LLM Endpoint 설정 시작:', id);
+      
+      const response = await fetch(apiUrl(`/api/llm-endpoints/${id}/activate`), {
+        method: 'POST'
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || '활성 엔드포인트 설정 실패');
+      }
+      
+      const data = await response.json();
+      console.log('✅ 활성 LLM Endpoint 설정 성공:', data.activeEndpointId);
+      
+      setActiveLlmEndpointId(id);
+      
+      return data;
+    } catch (error) {
+      console.error('❌ 활성 LLM Endpoint 설정 오류:', error);
+      throw error;
+    }
+  }, []);
+  
+  const setDefaultLlmEndpoint = useCallback(async (id) => {
+    try {
+      console.log('🏠 기본 LLM Endpoint 설정 시작:', id);
+      
+      const response = await fetch(apiUrl(`/api/llm-endpoints/${id}/set-default`), {
+        method: 'POST'
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || '기본 엔드포인트 설정 실패');
+      }
+      
+      const data = await response.json();
+      console.log('✅ 기본 LLM Endpoint 설정 성공:', data.defaultEndpointId);
+      
+      setDefaultLlmEndpointId(id);
+      
+      // 엔드포인트 목록에서 isDefault 플래그 업데이트
+      setLlmEndpoints(prev => 
+        prev.map(ep => ({
+          ...ep,
+          isDefault: ep.id === id
+        }))
+      );
+      
+      return data;
+    } catch (error) {
+      console.error('❌ 기본 LLM Endpoint 설정 오류:', error);
+      throw error;
+    }
+  }, []);
   const loadTasks = useCallback(async () => {
     try {
       // 서버에서 가져오기 시도
@@ -444,10 +632,12 @@ export const PromptProvider = ({ children }) => {
       // 현재 버전 및 편집 모드 설정
       if (versionsToUse.length > 0) {
         setCurrentVersion(versionsToUse[0].id);
+        setCurrentSystemPrompt(versionsToUse[0].system_prompt || 'You are a helpful assistant.'); // system prompt 설정
         setIsEditMode(false); // 버전 로드 시 기본적으로 읽기 모드로 설정
         console.log(`✅ 현재 버전 설정: ${versionsToUse[0].id}`);
       } else {
         setCurrentVersion(null);
+        setCurrentSystemPrompt('You are a helpful assistant.'); // 기본 system prompt 설정
         setIsEditMode(true); // 버전이 없으면 편집 모드로 설정
         console.log('✏️ 버전이 없어 편집 모드로 설정');
       }
@@ -512,7 +702,7 @@ export const PromptProvider = ({ children }) => {
     }
   }, [serverStatus]); // 의존성 최소화 - tasks, loadTemplateVariables 제거
   
-  const addVersion = useCallback(async (taskId, versionId, content, description = '', name = '') => {
+  const addVersion = useCallback(async (taskId, versionId, content, systemPromptContent = 'You are a helpful assistant.', description = '', name = '') => {
     try {
       // 실제 버전 이름 처리: 비어있으면 자동 생성되는 명명 규칙 적용
       const displayName = name.trim() || `버전 ${new Date().toLocaleString('ko-KR', {
@@ -534,6 +724,7 @@ export const PromptProvider = ({ children }) => {
           body: JSON.stringify({
             versionId,
             content,
+            system_prompt: systemPromptContent,
             description,
             name: displayName
           })
@@ -556,6 +747,7 @@ export const PromptProvider = ({ children }) => {
       const newVersion = {
         id: versionId,
         content,
+        system_prompt: systemPromptContent,
         description,
         name: displayName,
         createdAt: new Date().toISOString(),
@@ -592,6 +784,7 @@ export const PromptProvider = ({ children }) => {
       
       // 새로 생성된 버전을 현재 버전으로 설정
       setCurrentVersion(versionId);
+      setCurrentSystemPrompt(systemPromptContent); // 새 버전의 system prompt 설정
       setIsEditMode(false); // 새 버전 생성 후 읽기 모드로 전환
       
       console.log('버전 추가 완료:', versionId);
@@ -606,7 +799,13 @@ export const PromptProvider = ({ children }) => {
   const selectVersion = useCallback((versionId, editMode = false) => {
     setCurrentVersion(versionId);
     setIsEditMode(editMode);
-  }, []);
+    
+    // 선택된 버전의 system prompt 설정
+    const version = versions.find(v => v.id === versionId);
+    if (version) {
+      setCurrentSystemPrompt(version.system_prompt || 'You are a helpful assistant.');
+    }
+  }, [versions]);
   
   const updatePromptContent = useCallback((content) => {
     setVersions(prev => 
@@ -618,13 +817,25 @@ export const PromptProvider = ({ children }) => {
     );
   }, [currentVersion]);
   
-  const savePromptContent = useCallback(async (taskId, versionId, content, versionInfo = {}) => {
+  // System Prompt 내용 업데이트 함수
+  const updateSystemPromptContent = useCallback((systemPromptContent) => {
+    setCurrentSystemPrompt(systemPromptContent);
+    setVersions(prev => 
+      prev.map(v => 
+        v.id === currentVersion 
+          ? { ...v, system_prompt: systemPromptContent, isDirty: true }
+          : v
+      )
+    );
+  }, [currentVersion]);
+  
+  const savePromptContent = useCallback(async (taskId, versionId, content, systemPromptContent, versionInfo = {}) => {
     try {
       // 서버 API를 호출하여 버전 내용 저장
       await fetch(apiUrl(`/api/tasks/${taskId}/versions/${versionId}`), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content, ...versionInfo })
+        body: JSON.stringify({ content, system_prompt: systemPromptContent, ...versionInfo })
       });
       
       // 상태 업데이트
@@ -634,6 +845,7 @@ export const PromptProvider = ({ children }) => {
             ? { 
                 ...v, 
                 content, 
+                system_prompt: systemPromptContent,
                 name: versionInfo.name || v.name,
                 description: versionInfo.description || v.description,
                 isDirty: false 
@@ -651,6 +863,7 @@ export const PromptProvider = ({ children }) => {
           v.id === versionId ? { 
             ...v, 
             content,
+            system_prompt: systemPromptContent,
             name: versionInfo.name || v.name,
             description: versionInfo.description || v.description, 
           } : v
@@ -749,9 +962,11 @@ export const PromptProvider = ({ children }) => {
         if (remainingVersions.length > 0) {
           console.log('다음 버전으로 선택:', remainingVersions[0].id);
           setCurrentVersion(remainingVersions[0].id);
+          setCurrentSystemPrompt(remainingVersions[0].system_prompt || 'You are a helpful assistant.');
         } else {
           console.log('버전이 더 이상 없습니다.');
           setCurrentVersion(null);
+          setCurrentSystemPrompt('You are a helpful assistant.');
         }
       }
       
@@ -834,16 +1049,26 @@ export const PromptProvider = ({ children }) => {
     });
   }, []);
   
-  // LLM 통합
-  const callLLM = useCallback(async (taskId, versionId, inputData) => {
+  // LLM 통합 - 활성화된 엔드포인트 정보 사용
+  const callLLM = useCallback(async (taskId, versionId, inputData, systemPromptContent) => {
     try {
+      // 활성화된 엔드포인트 찾기
+      const activeEndpoint = llmEndpoints.find(ep => ep.id === activeLlmEndpointId);
+      
       const response = await fetch(apiUrl('/api/llm/call'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           taskId,
           versionId,
-          inputData
+          inputData,
+          system_prompt: systemPromptContent,
+          // 활성화된 엔드포인트 정보 전달
+          endpoint: activeEndpoint ? {
+            baseUrl: activeEndpoint.baseUrl,
+            apiKey: activeEndpoint.apiKey,
+            defaultModel: activeEndpoint.defaultModel
+          } : null
         })
       });
       
@@ -882,7 +1107,7 @@ export const PromptProvider = ({ children }) => {
       console.error('Error calling LLM:', error);
       throw error;
     }
-  }, []);
+  }, [llmEndpoints, activeLlmEndpointId]);
   
   const getVersionResults = useCallback((taskId, versionId) => {
     const version = versions.find(v => v.id === versionId);
@@ -1018,6 +1243,7 @@ export const PromptProvider = ({ children }) => {
       currentTask,
       versions,
       currentVersion,
+      currentSystemPrompt, // 현재 선택된 버전의 system prompt 상태 추가
       isEditMode,
       templateVariables,
       llmResults,
@@ -1025,6 +1251,11 @@ export const PromptProvider = ({ children }) => {
       availableGroups,
       serverStatus, // 서버 상태 추가
       setAvailableGroups,
+      
+      // LLM Endpoints 상태 추가
+      llmEndpoints,
+      activeLlmEndpointId,
+      defaultLlmEndpointId,
       
       // 함수
       loadTasks,
@@ -1043,6 +1274,7 @@ export const PromptProvider = ({ children }) => {
       selectVersion,
       setIsEditMode,
       updatePromptContent,
+      updateSystemPromptContent, // System Prompt 업데이트 함수 추가
       savePromptContent,
       deleteVersion,
       getVersionDetail,
@@ -1055,7 +1287,15 @@ export const PromptProvider = ({ children }) => {
       compareVersions,
       toggleDarkMode,
       deleteGroup,
-      addGroup
+      addGroup,
+      
+      // LLM Endpoints 관리 함수 추가
+      loadLlmEndpoints,
+      addLlmEndpoint,
+      updateLlmEndpoint,
+      deleteLlmEndpoint,
+      setActiveLlmEndpoint,
+      setDefaultLlmEndpoint
     }}>
       {children}
     </PromptContext.Provider>

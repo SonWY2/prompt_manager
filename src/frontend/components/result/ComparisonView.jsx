@@ -35,7 +35,7 @@ function ComparisonView({ versions, currentVersionId, onCompare, comparedResults
               <option value="">선택하세요</option>
               {versions.map(v => (
                 <option key={v.id} value={v.id}>
-                  {v.id} ({new Date(v.createdAt || 0).toLocaleDateString()})
+                  {v.name || v.id} ({new Date(v.createdAt || 0).toLocaleDateString()})
                 </option>
               ))}
             </select>
@@ -51,7 +51,7 @@ function ComparisonView({ versions, currentVersionId, onCompare, comparedResults
               <option value="">선택하세요</option>
               {versions.filter(v => v.id !== selectedVersion1).map(v => (
                 <option key={v.id} value={v.id}>
-                  {v.id} ({new Date(v.createdAt || 0).toLocaleDateString()})
+                  {v.name || v.id} ({new Date(v.createdAt || 0).toLocaleDateString()})
                 </option>
               ))}
             </select>
@@ -87,7 +87,7 @@ function ComparisonView({ versions, currentVersionId, onCompare, comparedResults
           <div className="grid grid-cols-2 gap-4">
             <div className="border border-gray-300 dark:border-gray-700 rounded">
               <div className="p-2 bg-gray-100 dark:bg-gray-800 font-medium border-b border-gray-300 dark:border-gray-700">
-                {selectedVersion1}
+                {versions.find(v => v.id === selectedVersion1)?.name || selectedVersion1}
               </div>
               <pre className="p-3 whitespace-pre-wrap text-sm dark:text-white">
                 {versions.find(v => v.id === selectedVersion1)?.content || "콘텐츠 없음"}
@@ -96,7 +96,7 @@ function ComparisonView({ versions, currentVersionId, onCompare, comparedResults
             
             <div className="border border-gray-300 dark:border-gray-700 rounded">
               <div className="p-2 bg-gray-100 dark:bg-gray-800 font-medium border-b border-gray-300 dark:border-gray-700">
-                {selectedVersion2}
+                {versions.find(v => v.id === selectedVersion2)?.name || selectedVersion2}
               </div>
               <pre className="p-3 whitespace-pre-wrap text-sm dark:text-white">
                 {versions.find(v => v.id === selectedVersion2)?.content || "콘텐츠 없음"}
@@ -109,7 +109,7 @@ function ComparisonView({ versions, currentVersionId, onCompare, comparedResults
             <div className="grid grid-cols-2 gap-4">
               <div className="border border-gray-300 dark:border-gray-700 rounded">
                 <div className="p-2 bg-gray-100 dark:bg-gray-800 font-medium border-b border-gray-300 dark:border-gray-700">
-                  {selectedVersion1} 결과
+                  {versions.find(v => v.id === selectedVersion1)?.name || selectedVersion1} 결과
                 </div>
                 <div className="p-3">
                   <p className="text-gray-500 dark:text-gray-400 text-sm italic">
@@ -120,7 +120,7 @@ function ComparisonView({ versions, currentVersionId, onCompare, comparedResults
               
               <div className="border border-gray-300 dark:border-gray-700 rounded">
                 <div className="p-2 bg-gray-100 dark:bg-gray-800 font-medium border-b border-gray-300 dark:border-gray-700">
-                  {selectedVersion2} 결과
+                  {versions.find(v => v.id === selectedVersion2)?.name || selectedVersion2} 결과
                 </div>
                 <div className="p-3">
                   <p className="text-gray-500 dark:text-gray-400 text-sm italic">

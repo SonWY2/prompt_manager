@@ -5,6 +5,7 @@ import ThreeColumnLayout from './components/layout/ThreeColumnLayout.jsx';
 import TaskNavigator from './components/task/TaskNavigator.jsx';
 import PromptEditor from './components/prompt/PromptEditor.jsx';
 import ResultViewer from './components/result/ResultViewer.jsx';
+import LLMEndpointSettings from './components/settings/LLMEndpointSettings.jsx'; // 설정 화면 추가
 import { apiUrl } from './utils/api.js';
 import './App.css';
 
@@ -18,17 +19,19 @@ function App() {
     isDarkMode,
     toggleDarkMode,
     serverStatus,
-    checkServerStatus
+    checkServerStatus,
+    loadLlmEndpoints // LLM endpoints 로드 함수 추가
   } = useStore();
   
   // URL 기반 라우팅 상태
   // 최초 접속 시 URL에 task ID가 없으므로 'task-list' (메인 화면)
   // URL에 task ID가 있으면 'task-detail' (프롬프트 목록 화면)
+  // URL에 settings 파라미터가 있으면 'settings' (설정 화면)
   const [currentView, setCurrentView] = useState('task-list'); 
   
   const [initialLoadHandled, setInitialLoadHandled] = useState(false); // 초기 로드 핸들링 여부 추적 상태
 
-  // URL에서 태스크 ID 추출 및 초기 상태 설정
+  // URL에서 태스크 ID 및 설정 상태 추출 및 초기 상태 설정
   useEffect(() => {
     // tasks가 로드되지 않았고, 아직 초기 로드가 처리되지 않았다면 대기
     if (Object.keys(tasks).length === 0 && !initialLoadHandled) {
@@ -44,10 +47,16 @@ function App() {
 
     const urlParams = new URLSearchParams(window.location.search);
     const taskIdFromUrl = urlParams.get('task');
+    const settingsFromUrl = urlParams.get('settings'); // 설정 파라미터 추가
     
-    console.log('🔗 App: URL에서 태스크 ID 확인:', taskIdFromUrl);
+    console.log('🔗 App: URL에서 파라미터 확인:', { taskIdFromUrl, settingsFromUrl });
     
-    if (taskIdFromUrl) {
+    if (settingsFromUrl) {
+      // 설정 화면으로 이동
+      console.log('⚙️ App: 설정 화면으로 설정');
+      setCurrentTask(null);
+      setCurrentView('settings');
+    } else if (taskIdFromUrl) {
       if (tasks[taskIdFromUrl]) {
           // URL에 유효한 태스크 ID가 있고, tasks에 해당 태스크가 로드됨
           console.log('✅ App: URL의 태스크 ID로 화면 설정:', taskIdFromUrl);
@@ -96,6 +105,20 @@ function App() {
     }
   };
   
+  // 설정 화면으로 이동
+  const handleOpenSettings = () => {
+    console.log('⚙️ App: 설정 화면 열기');
+    
+    setCurrentTask(null);
+    setCurrentView('settings');
+    
+    // URL 업데이트
+    const newUrl = `${window.location.pathname}?settings=llm-endpoints`;
+    window.history.pushState({ view: 'settings' }, '', newUrl);
+    
+    console.log('🔗 App: 설정 URL 업데이트:', newUrl);
+  };
+  
   // 브라우저 뒤로가기/앞으로가기 처리
   useEffect(() => {
     const handlePopState = (event) => {
@@ -103,10 +126,14 @@ function App() {
       
       const urlParams = new URLSearchParams(window.location.search);
       const taskIdFromUrl = urlParams.get('task');
+      const settingsFromUrl = urlParams.get('settings');
       
-      // popstate 발생 시, tasks 데이터가 이미 로드되었다고 가정
-      // 또는, tasks가 비어있을 때도 url에 task 파라미터가 없으면 task-list로 이동
-      if (taskIdFromUrl && tasks[taskIdFromUrl]) {
+      if (settingsFromUrl) {
+        // 설정 화면으로 이동
+        setCurrentTask(null);
+        setCurrentView('settings');
+        console.log('⚙️ App: 브라우저 네비게이션으로 설정 화면');
+      } else if (taskIdFromUrl && tasks[taskIdFromUrl]) {
         setCurrentTask(taskIdFromUrl);
         setCurrentView('task-detail');
         console.log('🎯 App: 브라우저 네비게이션으로 태스크 선택:', taskIdFromUrl);
@@ -124,12 +151,13 @@ function App() {
   // 앱 초기화 시 데이터 로드 및 서버 상태 체크
   useEffect(() => {
     loadTasks();
+    loadLlmEndpoints(); // LLM endpoints 로드 추가
     checkServerStatus();
     
     // 5분마다 서버 상태 체크 (너무 빈번하지 않게 조정)
     const interval = setInterval(checkServerStatus, 300000); // 5분 = 300,000ms
     return () => clearInterval(interval);
-  }, [loadTasks, checkServerStatus]);
+  }, [loadTasks, loadLlmEndpoints, checkServerStatus]); // loadLlmEndpoints 추가
 
   // 메인 콘텐츠 영역에 표시될 메시지 컴포넌트
   const MainContentPlaceholder = () => (
@@ -164,13 +192,16 @@ function App() {
             
             <h1 className="text-xl font-bold">
               {currentView === 'task-list' ? '프롬프트 매니저' : 
+               currentView === 'settings' ? '설정' :
                currentTask && tasks[currentTask] ? `${tasks[currentTask].name} - 버전 관리` : 
                '프롬프트 매니저'}
             </h1>
             
             {/* 현재 화면 표시 */}
             <div className="text-sm text-gray-300">
-              {currentView === 'task-list' ? '📋 메인 화면' : '⚙️ 프롬프트 버전 관리'}
+              {currentView === 'task-list' ? '📋 메인 화면' : 
+               currentView === 'settings' ? '⚙️ 설정' :
+               '⚙️ 프롬프트 버전 관리'}
             </div>
             
             {/* 서버 상태 인디케이터 */}
@@ -204,6 +235,12 @@ function App() {
               가이드
             </button>
             <button 
+              onClick={handleOpenSettings}
+              className="p-2 rounded-full bg-gray-700 hover:bg-gray-600"
+              title="설정">
+              ⚙️
+            </button>
+            <button 
               onClick={toggleDarkMode}
               className="p-2 rounded-full bg-gray-700 hover:bg-gray-600"
               title={isDarkMode ? "라이트 모드로 전환" : "다크 모드로 전환"}>
@@ -212,41 +249,47 @@ function App() {
           </div>
         </header>
         
-        {/* 메인 콘텐츠 - 항상 3단 레이아웃 사용 */}
+        {/* 메인 콘텐츠 */}
         <div className="flex-1 overflow-hidden">
-          <ThreeColumnLayout
-            leftPanel={
-              <TaskNavigator 
-                tasks={tasks}
-                currentTask={currentTask}
-                onSelectTask={handleSelectTask}
-                // isFullScreen prop은 TaskNavigator 내부에서 더 이상 사용하지 않음
-                // 대신 TaskNavigator는 항상 사이드바 역할
-              />
-            }
-            centerPanel={
-              currentView === 'task-list' ? (
-                <MainContentPlaceholder /> // 메인 화면일 때 빈 화면 메시지
-              ) : (
-                <PromptEditor 
-                  taskId={currentTask}
-                  versionId={currentVersion}
+          {currentView === 'settings' ? (
+            // 설정 화면
+            <LLMEndpointSettings />
+          ) : (
+            // 기존 3단 레이아웃
+            <ThreeColumnLayout
+              leftPanel={
+                <TaskNavigator 
+                  tasks={tasks}
+                  currentTask={currentTask}
+                  onSelectTask={handleSelectTask}
+                  // isFullScreen prop은 TaskNavigator 내부에서 더 이상 사용하지 않음
+                  // 대신 TaskNavigator는 항상 사이드바 역할
                 />
-              )
-            }
-            rightPanel={
-              currentView === 'task-list' ? (
-                <MainContentPlaceholder /> // 메인 화면일 때 빈 화면 메시지
-              ) : (
-                <ResultViewer 
-                  taskId={currentTask}
-                  versionId={currentVersion}
-                />
-              )
-            }
-            leftPanelWidth={20} // 초기 너비 %
-            rightPanelWidth={30} // 초기 너비 %
-          />
+              }
+              centerPanel={
+                currentView === 'task-list' ? (
+                  <MainContentPlaceholder /> // 메인 화면일 때 빈 화면 메시지
+                ) : (
+                  <PromptEditor 
+                    taskId={currentTask}
+                    versionId={currentVersion}
+                  />
+                )
+              }
+              rightPanel={
+                currentView === 'task-list' ? (
+                  <MainContentPlaceholder /> // 메인 화면일 때 빈 화면 메시지
+                ) : (
+                  <ResultViewer 
+                    taskId={currentTask}
+                    versionId={currentVersion}
+                  />
+                )
+              }
+              leftPanelWidth={20} // 초기 너비 %
+              rightPanelWidth={30} // 초기 너비 %
+            />
+          )}
         </div>
       </div>
     </div>

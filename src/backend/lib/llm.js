@@ -1,29 +1,53 @@
 // LLM API 호출 함수 (OpenAI 호환 API 사용)
 const axios = require('axios');
 
-async function callLLM(prompt) {
-  console.log(`[${new Date().toISOString()}] LLM API 호출 시작 - 길이: ${prompt.length} 문자`);
+async function callLLM(prompt, systemPrompt = "You are a helpful assistant.", llmConfig = null) {
+  console.log(`[${new Date().toISOString()}] LLM API 호출 시작 - 프롬프트 길이: ${prompt.length} 문자, 시스템 프롬프트 길이: ${systemPrompt.length} 문자`);
   
   try {
-    // 환경변수에서 설정 값 가져오기
-    const baseUrl = process.env.OPENAI_BASE_URL || 'http://localhost:8000/v1'; // 기본값
-    const model = process.env.OPENAI_MODEL || 'mistralai/Mistral-7B-Instruct-v0.2'; // 기본값
+    // LLM 설정 결정 - llmConfig가 제공되면 사용, 아니면 환경변수 사용
+    const config = llmConfig || {
+      baseUrl: process.env.OPENAI_BASE_URL || 'http://localhost:8000/v1',
+      apiKey: process.env.OPENAI_API_KEY || '',
+      model: process.env.OPENAI_MODEL || 'mistralai/Mistral-7B-Instruct-v0.2'
+    };
     
-    console.log(`[${new Date().toISOString()}] API 설정 - URL: ${baseUrl}, 모델: ${model}`);
+    console.log(`[${new Date().toISOString()}] LLM 설정:`, {
+      baseUrl: config.baseUrl,
+      model: config.model,
+      hasApiKey: !!config.apiKey
+    });
     
-    // vLLM 서버로 요청 보내기
-    const response = await axios.post(`${baseUrl}/chat/completions`, {
-      model: model,
-      messages: [
-        { role: "system", content: "You are a helpful assistant." },
-        { role: "user", content: prompt }
-      ],
+    // 메시지 배열 생성 - system prompt가 비어있지 않은 경우에만 추가
+    const messages = [];
+    
+    if (systemPrompt && systemPrompt.trim() !== "") {
+      messages.push({ role: "system", content: systemPrompt });
+    }
+    
+    messages.push({ role: "user", content: prompt });
+    
+    console.log(`[${new Date().toISOString()}] 메시지 구성 완료 - 총 ${messages.length}개 메시지`);
+    
+    // 요청 헤더 구성
+    const headers = {
+      'Content-Type': 'application/json'
+    };
+    
+    // API 키가 있으면 헤더에 추가
+    if (config.apiKey) {
+      headers['Authorization'] = `Bearer ${config.apiKey}`;
+    }
+    
+    // LLM 서버로 요청 보내기
+    const response = await axios.post(`${config.baseUrl}/chat/completions`, {
+      model: config.model,
+      messages: messages,
       temperature: 0.7,
       max_tokens: 1024
     }, {
-      headers: {
-        'Content-Type': 'application/json'
-      }
+      headers: headers,
+      timeout: 30000 // 30초 타임아웃
     });
     
     // 응답 처리
@@ -32,9 +56,11 @@ async function callLLM(prompt) {
     
     return {
       prompt: prompt,
+      system_prompt: systemPrompt,
       response: assistantResponse,
       timestamp: new Date().toISOString(),
-      model: model
+      model: config.model,
+      endpoint: config.baseUrl
     };
   } catch (error) {
     console.error(`[${new Date().toISOString()}] LLM API 호출 오류:`, error.message);
@@ -44,18 +70,21 @@ async function callLLM(prompt) {
       console.warn(`[${new Date().toISOString()}] 개발 모드: 모의 응답 사용`);
       
       const mockResponses = [
+        "사용자의 요청에 따라 생성된 응답입니다. 다양한 내용을 포함할 수 있습니다.",
         "프롬프트 매니저를 통해 테스트하고 있는 응답입니다. API 호출 시 오류가 발생하여 모의 응답을 사용합니다.",
-        "서버 연결 오류가 발생하여 모의 응답을 생성합니다. 실제 API 호출이 가능한지 확인해 보세요.",
-        "기본 모의 응답입니다. 환경변수 설정을 확인해주세요."
+        "서버 연결 오류가 발생하여 모의 응답을 생성합니다. 실제 API 호출이 가능한지 확인해 보세요."
       ];
       
       const randomResponse = mockResponses[Math.floor(Math.random() * mockResponses.length)];
       
       return {
         prompt: prompt,
-        response: randomResponse + "\n\n[오류 발생] " + error.message + "\n\n입력된 프롬프트: " + prompt.substring(0, 100) + (prompt.length > 100 ? "..." : ""),
+        system_prompt: systemPrompt,
+        response: randomResponse + "\n\n입력된 프롬프트: " + prompt.substring(0, 100) + (prompt.length > 100 ? "..." : ""),
         timestamp: new Date().toISOString(),
-        error: error.message
+        error: error.message,
+        model: 'mock-model',
+        endpoint: 'mock-endpoint'
       };
     }
     

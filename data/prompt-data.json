@@ -159,7 +159,8 @@
           "name": "ㅁ",
           "createdAt": "2025-06-03T04:45:29.838Z",
           "results": [],
-          "updatedAt": "2025-06-03T04:45:36.581Z"
+          "updatedAt": "2025-06-03T13:35:49.127Z",
+          "system_prompt": "You are a helpful assistant."
         }
       ]
     },
@@ -177,6 +178,11 @@
           "updatedAt": "2025-06-03T05:24:46.508Z"
         }
       ]
+    },
+    "task-1748953551424": {
+      "name": "ㅁㄴㅇㄹ",
+      "group": "기본 그룹",
+      "versions": []
     }
   },
   "versionHistory": {}

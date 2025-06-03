@@ -1,0 +1,36 @@
+{
+  "endpoints": [
+    {
+      "id": "llm-ep-default",
+      "name": "기본 vLLM 서버",
+      "baseUrl": "http://localhost:8000/v1",
+      "apiKey": "",
+      "defaultModel": "mistralai/Mistral-7B-Instruct-v0.2",
+      "description": "로컬 vLLM 서버 (기본값)",
+      "isDefault": true,
+      "createdAt": "2025-06-03T00:00:00.000Z"
+    },
+    {
+      "id": "llm-ep-openai",
+      "name": "OpenAI GPT-4",
+      "baseUrl": "https://api.openai.com/v1",
+      "apiKey": "",
+      "defaultModel": "gpt-4o",
+      "description": "OpenAI의 GPT-4 모델",
+      "isDefault": false,
+      "createdAt": "2025-06-03T00:00:00.000Z"
+    },
+    {
+      "id": "llm-ep-1748957780843",
+      "name": "ㅇㄹㄴㅁㅇㄹㄴㅁㅇㄹ",
+      "baseUrl": "http://localhost:8000/v1aaasdfsadfsadf",
+      "apiKey": "sadfsadfsdf",
+      "defaultModel": "asdfsadf",
+      "description": "safsadf",
+      "isDefault": false,
+      "createdAt": "2025-06-03T13:36:20.843Z"
+    }
+  ],
+  "activeEndpointId": "llm-ep-default",
+  "defaultEndpointId": "llm-ep-default"
+}
