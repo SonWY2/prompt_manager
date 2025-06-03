@@ -1,31 +1,79 @@
 import React, { useState } from 'react';
+import { flushSync } from 'react-dom';
 import { useStore } from '../../store.jsx';
 import Button from '../common/Button.jsx';
 
 function TaskActions() {
-  const { createTask } = useStore();
+  const { createTask, availableGroups, addGroup, setCurrentTask } = useStore();
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [taskName, setTaskName] = useState('');
   const [taskGroup, setTaskGroup] = useState('기본 그룹');
   const [newGroupName, setNewGroupName] = useState('');
-  const [availableGroups] = useState(['기본 그룹', '마케팅', '고객 지원', '제품 개발', '기술 문서']);
   
-  const handleCreateTask = async () => {
+  const handleCreateTask = () => {
     if (!taskName.trim()) return;
     
-    // 새 그룹 옵션을 선택한 경우 newGroupName을 사용
-    const finalGroup = taskGroup === '__new__' && newGroupName.trim() 
-      ? newGroupName.trim() 
-      : taskGroup;
+    // 버튼 비활성화로 중복 생성 방지
+    const createButton = document.querySelector('[data-create-task-btn]');
+    if (createButton) {
+      createButton.disabled = true;
+    }
     
     try {
-      await createTask(taskName, finalGroup);
-      setTaskName('');
-      setTaskGroup('기본 그룹');
-      setNewGroupName('');
-      setShowCreateForm(false);
+      let finalGroup = taskGroup;
+      
+      console.log('태스크 생성 시작:', { name: taskName, group: finalGroup });
+      
+      // 즉시 UI 업데이트 (폼 초기화)
+      flushSync(() => {
+        setTaskName('');
+        setTaskGroup('기본 그룹');
+        setNewGroupName('');
+        setShowCreateForm(false);
+      });
+      
+      // 백그라운드에서 실제 생성
+      setTimeout(async () => {
+        try {
+          // 새 그룹 옵션을 선택한 경우
+          if (taskGroup === '__new__' && newGroupName.trim()) {
+            try {
+              const result = await addGroup(newGroupName.trim());
+              console.log('그룹 추가 성공:', result);
+              finalGroup = newGroupName.trim();
+            } catch (groupError) {
+              console.warn('그룹 추가 실패:', groupError);
+              finalGroup = '기본 그룹';
+              alert('그룹 추가에 실패했습니다: ' + groupError.message + '\n기본 그룹으로 생성합니다.');
+            }
+          }
+          
+          const taskId = await createTask(taskName, finalGroup);
+          console.log('태스크 생성 완료:', taskId);
+          
+          // 새로 생성된 태스크를 약간의 지연 후 선택 (서버 상태 업데이트 대기)
+          setTimeout(() => {
+            setCurrentTask(taskId);
+            console.log('새 태스크 선택 완료:', taskId);
+          }, 100);
+          
+        } catch (error) {
+          console.error('태스크 생성 오류:', error);
+          alert('태스크 생성 중 오류가 발생했습니다: ' + error.message);
+        } finally {
+          // 버튼 재활성화
+          if (createButton) {
+            createButton.disabled = false;
+          }
+        }
+      }, 0);
+      
     } catch (error) {
-      console.error("Failed to create task:", error);
+      console.error('태스크 생성 UI 오류:', error);
+      // 버튼 재활성화
+      if (createButton) {
+        createButton.disabled = false;
+      }
     }
   };
   
@@ -89,6 +137,7 @@ function TaskActions() {
               variant="primary"
               size="small"
               onClick={handleCreateTask}
+              data-create-task-btn="true"
             >
               생성
             </Button>

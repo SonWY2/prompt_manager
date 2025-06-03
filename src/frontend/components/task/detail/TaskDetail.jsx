@@ -1,10 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useStore } from '../../../store.jsx';
 import Button from '../../common/Button.jsx';
 import { apiUrl } from '../../../utils/api';
 
 function TaskDetail({ taskId }) {
-  const { tasks, updateTask, addVersion, selectVersion, deleteVersion, getVersionDetail } = useStore();
+  const { tasks, versions, updateTask, addVersion, selectVersion, deleteVersion, getVersionDetail, loadVersions } = useStore();
   
   const [isEditing, setIsEditing] = useState(false);
   const [showVersionForm, setShowVersionForm] = useState(false);
@@ -17,6 +17,13 @@ function TaskDetail({ taskId }) {
   const currentTask = tasks[taskId];
   if (!currentTask) return null;
   
+  // 태스크가 변경될 때 버전 로드
+  useEffect(() => {
+    if (taskId) {
+      loadVersions(taskId);
+    }
+  }, [taskId, loadVersions]);
+  
   const handleUpdateTask = () => {
     if (!taskName.trim()) return;
     
@@ -28,18 +35,30 @@ function TaskDetail({ taskId }) {
     setIsEditing(false);
   };
   
-  const handleCreateVersion = () => {
+  const handleCreateVersion = async () => {
     if (!newVersionContent.trim()) return;
     
-    const versionId = `v${Date.now()}`;
-    const name = newVersionName.trim() || versionId;
-    
-    addVersion(taskId, versionId, newVersionContent, newVersionDescription, name);
-    
-    setNewVersionName('');
-    setNewVersionDescription('');
-    setNewVersionContent('');
-    setShowVersionForm(false);
+    try {
+      const versionId = `v${Date.now()}`;
+      const name = newVersionName.trim() || versionId;
+      
+      await addVersion(taskId, versionId, newVersionContent, newVersionDescription, name);
+      
+      // 버전 생성 후 명시적으로 버전 목록 새로고침
+      setTimeout(() => {
+        loadVersions(taskId);
+      }, 100);
+      
+      setNewVersionName('');
+      setNewVersionDescription('');
+      setNewVersionContent('');
+      setShowVersionForm(false);
+      
+      console.log('버전 생성 완료, 목록 새로고침 요청');
+    } catch (error) {
+      console.error('버전 생성 실패:', error);
+      alert('버전 생성 중 오류가 발생했습니다.');
+    }
   };
 
   // 버전 선택 및 편집 모드로 전환
@@ -52,7 +71,7 @@ function TaskDetail({ taskId }) {
     selectVersion(versionId, false); // 읽기 모드로 설정하여 버전 선택
   };
   
-  const hasVersions = currentTask.versions && currentTask.versions.length > 0;
+  const hasVersions = versions && versions.length > 0;
   
   return (
     <div className="p-4">
@@ -182,7 +201,7 @@ function TaskDetail({ taskId }) {
         
         {hasVersions ? (
           <div className="space-y-2">
-            {currentTask.versions.map((version) => (
+            {versions.map((version) => (
               <div 
                 key={version.id}
                 className="p-3 border border-gray-300 dark:border-gray-700 rounded flex justify-between items-center hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer relative group"
@@ -193,6 +212,13 @@ function TaskDetail({ taskId }) {
                   className="absolute top-1 left-1 p-1 rounded-full bg-red-500 text-white opacity-0 group-hover:opacity-100 transition-opacity"
                   onClick={async (e) => {
                     e.stopPropagation(); // 클릭 버블링 방지
+                    
+                    // 로딩 상태 표시를 위한 UI 개선 (옵션)
+                    const deleteButton = e.target.closest('button');
+                    const originalText = deleteButton.innerHTML;
+                    deleteButton.innerHTML = '<div class="w-3 h-3 border border-white border-t-transparent rounded-full animate-spin"></div>';
+                    deleteButton.disabled = true;
+                    
                     try {
                       // 버전 정보 확인
                       const versionInfo = await getVersionDetail(taskId, version.id);
@@ -206,18 +232,51 @@ function TaskDetail({ taskId }) {
                       if (window.confirm(`정말 이 버전(${versionInfo.name || versionInfo.id})을 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다!`)) {
                         // 스토어의 deleteVersion 함수 사용
                         try {
-                          await deleteVersion(taskId, version.id);
+                          const result = await deleteVersion(taskId, version.id);
                           
                           // 삭제 성공
-                          console.log('버전 삭제 성공!');
-                          alert('버전이 삭제되었습니다.');
+                          console.log('버전 삭제 성공!', result);
+                          
+                          // 성공 메시지 표시 (사용자 경험 개선)
+                          const successMsg = document.createElement('div');
+                          successMsg.className = 'fixed top-4 right-4 bg-green-500 text-white px-4 py-2 rounded shadow-lg z-50';
+                          successMsg.textContent = result.message || '버전이 삭제되었습니다.';
+                          document.body.appendChild(successMsg);
+                          setTimeout(() => {
+                            if (successMsg.parentNode) {
+                              successMsg.parentNode.removeChild(successMsg);
+                            }
+                          }, 3000);
+                          
+                          // 버전 목록 새로고침 (안전하게 처리)
+                          setTimeout(() => {
+                            loadVersions(taskId);
+                          }, 500);
+                          
                         } catch (err) {
                           console.error('삭제 오류:', err);
-                          alert(`삭제 중 오류 발생: ${err.message}`);
+                          
+                          // 사용자 친화적 에러 메시지
+                          let userMessage = '삭제 중 오류가 발생했습니다.';
+                          
+                          if (err.message.includes('서버에 연결할 수 없습니다')) {
+                            userMessage = '서버에 연결할 수 없습니다.\n\n다음을 확인해주세요:\n1. 백엔드 서버가 실행 중인지 확인\n2. 네트워크 연결 상태 확인\n3. 브라우저 새로고침 후 재시도';
+                          } else if (err.message.includes('서버 내부 오류')) {
+                            userMessage = '서버에서 오류가 발생했습니다.\n\n다음을 확인해주세요:\n1. 서버 로그 확인\n2. 잠시 후 다시 시도\n3. 백엔드 서버 재시작';
+                          } else if (err.message.includes('시간이 초과')) {
+                            userMessage = '서버 응답 시간이 초과되었습니다.\n\n네트워크 연결을 확인하고 다시 시도해주세요.';
+                          }
+                          
+                          alert(userMessage);
                         }
                       }
                     } catch (error) {
-                      alert(`버전 정보 가져오기 오류: ${error.message}`);
+                      console.error('버전 정보 가져오기 오류:', error);
+                      alert(`버전 정보를 가져올 수 없습니다: ${error.message}`);
+                    } finally {
+                      // 로딩 상태 해제
+                      deleteButton.innerHTML = originalText;
+                      deleteButton.disabled = false;
                     }
                   }}
                   title="버전 삭제"

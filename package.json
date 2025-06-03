@@ -8,14 +8,16 @@
     "preview": "vite preview",
     "backend": "node src/backend/server.js",
     "start": "npm run build && npm run backend",
-    "dev:all": "concurrently \"npm run dev\" \"npm run backend\""
+    "dev:all": "concurrently \"npm run dev\" \"npm run backend\"",
+    "test:connection": "node test-connection.js",
+    "check:ports": "node check-ports.js"
   },
   "dependencies": {
     "@vitejs/plugin-react": "^4.4.1",
     "axios": "^1.6.2",
     "body-parser": "^1.20.2",
     "cors": "^2.8.5",
-    "dotenv": "^16.4.0",
+    "dotenv": "^16.5.0",
     "express": "^4.18.2",
     "json-diff": "^0.5.0",
     "react": "^18.3.1",

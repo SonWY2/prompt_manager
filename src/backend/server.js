@@ -1,7 +1,16 @@
 
 
-// 환경 변수 로드
-require('dotenv').config();
+// 환경 변수 로드 - dotenv가 없는 경우 처리
+try {
+  require('dotenv').config();
+} catch (error) {
+  console.warn('dotenv 모듈을 찾을 수 없습니다. 환경 변수를 .env 파일에서 로드하지 않습니다.');
+  // 필요한 기본 환경 변수 설정
+  process.env.SERVER_PORT = process.env.SERVER_PORT || 3000;
+  process.env.ALLOWED_FRONTEND_PORTS = process.env.ALLOWED_FRONTEND_PORTS || '';
+  process.env.OPENAI_BASE_URL = process.env.OPENAI_BASE_URL || 'http://localhost:8000/v1';
+  process.env.OPENAI_MODEL = process.env.OPENAI_MODEL || 'mistralai/Mistral-7B-Instruct-v0.2';
+}
 
 const express = require('express');
 const cors = require('cors');
@@ -59,12 +68,21 @@ app.use((req, res, next) => {
   res.status(404).send(`Cannot ${req.method} ${req.path}`);
 });
 
-// 요청 로깅 미들웨어
+// 요청 로깅 미들웨어 (템플릿 변수 API는 로깅 생략)
 app.use((req, res, next) => {
+  // 템플릿 변수 API는 로깅 생략 (너무 빈번함)
+  if (req.path.includes('/variables')) {
+    return next();
+  }
+  
   const startTime = Date.now();
   console.log(`[${new Date().toISOString()}] => ${req.method} ${req.originalUrl} 요청 시작`);
-  console.log(`요청 파라미터:`, req.params);
-  console.log(`요청 쿼리:`, req.query);
+  
+  // GET 요청이 아닌 경우에만 파라미터와 쿼리 로깅
+  if (req.method !== 'GET') {
+    console.log(`요청 파라미터:`, req.params);
+    console.log(`요청 쿼리:`, req.query);
+  }
   
   // 원래 응답 메서드를 저장
   const originalSend = res.send;
@@ -78,16 +96,20 @@ app.use((req, res, next) => {
     return originalStatus.apply(this, arguments);
   };
   
-  // 응답 메서드 오버라이드
+  // 응답 메서드 오버라이드 (오류나 느린 요청만 로깅)
   res.send = function() {
     const duration = Date.now() - startTime;
-    console.log(`[${new Date().toISOString()}] <= ${req.method} ${req.originalUrl} 응답 완료 (${currentStatus}) - ${duration}ms`);
+    if (currentStatus >= 400 || duration > 1000) {
+      console.log(`[${new Date().toISOString()}] <= ${req.method} ${req.originalUrl} 응답 완료 (${currentStatus}) - ${duration}ms`);
+    }
     return originalSend.apply(this, arguments);
   };
   
   res.json = function() {
     const duration = Date.now() - startTime;
-    console.log(`[${new Date().toISOString()}] <= ${req.method} ${req.originalUrl} JSON 응답 완료 (${currentStatus}) - ${duration}ms`);
+    if (currentStatus >= 400 || duration > 1000) {
+      console.log(`[${new Date().toISOString()}] <= ${req.method} ${req.originalUrl} JSON 응답 완료 (${currentStatus}) - ${duration}ms`);
+    }
     return originalJson.apply(this, arguments);
   };
   
@@ -169,6 +191,29 @@ app.put('/api/tasks/:taskId', (req, res) => {
       id: taskId,
       ...promptData.tasks[taskId]
     }
+  });
+});
+
+// 새로 추가: 태스크 삭제 API
+app.delete('/api/tasks/:taskId', (req, res) => {
+  const { taskId } = req.params;
+  
+  console.log(`[${new Date().toISOString()}] 태스크 삭제 요청:`, taskId);
+  
+  if (!promptData.tasks[taskId]) {
+    return res.status(404).json({ error: 'Task not found' });
+  }
+  
+  // 태스크 삭제
+  delete promptData.tasks[taskId];
+  
+  saveData();
+  
+  console.log(`[${new Date().toISOString()}] 태스크 삭제 완료:`, taskId);
+  
+  res.json({ 
+    success: true, 
+    message: `Task '${taskId}' deleted successfully`
   });
 });
 
@@ -274,86 +319,106 @@ app.put('/api/tasks/:taskId/versions/:versionId', (req, res) => {
 
 
 
-// 버전 삭제 API - 출력 기록 추가
+// 버전 삭제 API - 안전한 에러 처리 추가
 app.delete('/api/tasks/:taskId/versions/:versionId', (req, res) => {
   const { taskId, versionId } = req.params;
-  console.log(`[${new Date().toISOString()}] 버전 삭제 요청:`, { taskId, versionId });
-  console.log(`DELETE 요청 URL: ${req.originalUrl}`);
-  console.log(`DELETE 요청 파라미터: ${JSON.stringify(req.params)}`);
   
-  // 전체 데이터 로깅
-  console.log('=== 버전 삭제 디버깅 정보 ===');
-  console.log(`요청 경로: ${req.method} ${req.originalUrl}`);
-  console.log(`요청 파라미터: taskId=${taskId}, versionId=${versionId}`);
-  console.log(`태스크 ID 유형: ${typeof taskId}, 버전 ID 유형: ${typeof versionId}`);
-  console.log(`태스크 ID 값: "${taskId}", 버전 ID 값: "${versionId}"`);
-  console.log(`요청 헤더:`, req.headers);
-  
-  // 파라미터 유효성 검사
-  if (!taskId || !versionId) {
-    console.log('오류: 태스크 ID 또는 버전 ID가 없습니다!');
-    return res.status(400).json({ error: 'Task ID and Version ID are required', params: { taskId, versionId } });
-  }
-  
-  // 태스크 체크
-  if (!promptData.tasks) {
-    console.log('오류: tasks 객체가 없습니다!');
-    return res.status(500).json({ error: 'Internal server error: tasks object is undefined' });
-  }
-  
-  if (!promptData.tasks[taskId]) {
-    console.log(`오류: 태스크를 찾을 수 없습니다. 태스크 ID: ${taskId}`);
-    console.log('전체 태스크 목록:', Object.keys(promptData.tasks));
-    return res.status(404).json({ error: 'Task not found', taskId });
-  }
-  
-  // 태스크 확인 성공
-  console.log(`태스크 찾음: ${taskId}, 태스크 이름: ${promptData.tasks[taskId].name}`);
-  
-  // 버전 체크
-  if (!promptData.tasks[taskId].versions) {
-    console.log(`오류: 태스크에 versions 객체가 없습니다!`);
-    return res.status(500).json({ error: 'Internal server error: versions array is undefined' });
-  }
-  
-  console.log(`버전 개수: ${promptData.tasks[taskId].versions.length}`);
-  console.log('버전 ID 목록:', promptData.tasks[taskId].versions.map(v => v.id));
-  
-  const versionIndex = promptData.tasks[taskId].versions.findIndex(v => v.id === versionId);
-  if (versionIndex === -1) {
-    console.log(`오류: 버전을 찾을 수 없습니다. 버전 ID: ${versionId}`);
-    return res.status(404).json({ 
-      error: 'Version not found', 
-      versionId,
-      availableVersions: promptData.tasks[taskId].versions.map(v => ({ id: v.id, name: v.name }))
+  try {
+    console.log(`[${new Date().toISOString()}] 버전 삭제 요청:`, { taskId, versionId });
+    
+    // 파라미터 유효성 검사
+    if (!taskId || !versionId) {
+      console.log('오류: 태스크 ID 또는 버전 ID가 없습니다!');
+      return res.status(400).json({ 
+        error: 'Task ID and Version ID are required', 
+        params: { taskId, versionId } 
+      });
+    }
+    
+    // promptData 객체 존재 확인
+    if (!promptData || !promptData.tasks) {
+      console.log('오류: promptData 또는 tasks 객체가 없습니다!');
+      return res.status(500).json({ 
+        error: 'Internal server error: data structure not initialized' 
+      });
+    }
+    
+    // 태스크 존재 확인
+    if (!promptData.tasks[taskId]) {
+      console.log(`오류: 태스크를 찾을 수 없습니다. 태스크 ID: ${taskId}`);
+      console.log('전체 태스크 목록:', Object.keys(promptData.tasks));
+      return res.status(404).json({ 
+        error: 'Task not found', 
+        taskId,
+        availableTasks: Object.keys(promptData.tasks)
+      });
+    }
+    
+    console.log(`태스크 찾음: ${taskId}, 태스크 이름: ${promptData.tasks[taskId].name}`);
+    
+    // 버전 배열 존재 확인
+    if (!Array.isArray(promptData.tasks[taskId].versions)) {
+      console.log(`오류: 태스크에 versions 배열이 없습니다!`);
+      return res.status(500).json({ 
+        error: 'Internal server error: versions array not found' 
+      });
+    }
+    
+    console.log(`버전 개수: ${promptData.tasks[taskId].versions.length}`);
+    console.log('버전 ID 목록:', promptData.tasks[taskId].versions.map(v => v.id));
+    
+    // 버전 찾기
+    const versionIndex = promptData.tasks[taskId].versions.findIndex(v => v.id === versionId);
+    if (versionIndex === -1) {
+      console.log(`오류: 버전을 찾을 수 없습니다. 버전 ID: ${versionId}`);
+      return res.status(404).json({ 
+        error: 'Version not found', 
+        versionId,
+        availableVersions: promptData.tasks[taskId].versions.map(v => ({ id: v.id, name: v.name }))
+      });
+    }
+    
+    // 버전 삭제 전 정보 백업
+    const deletedVersion = { ...promptData.tasks[taskId].versions[versionIndex] };
+    console.log(`삭제될 버전 정보:`, { id: deletedVersion.id, name: deletedVersion.name });
+    
+    // 버전 삭제 실행
+    promptData.tasks[taskId].versions.splice(versionIndex, 1);
+    console.log(`삭제 후 버전 수: ${promptData.tasks[taskId].versions.length}`);
+    
+    // 데이터 저장 (안전한 방식)
+    try {
+      saveData();
+      console.log('데이터 저장 성공');
+    } catch (saveError) {
+      console.error('데이터 저장 실패:', saveError);
+      // 저장 실패 시 메모리 상태는 이미 변경됨을 알림
+      return res.status(500).json({
+        error: 'Failed to save data to disk, but version deleted from memory',
+        deletedVersion: { id: deletedVersion.id, name: deletedVersion.name }
+      });
+    }
+    
+    // 성공 응답
+    res.json({ 
+      success: true,
+      message: `버전 ${versionId} 삭제 성공`, 
+      deletedVersion: {
+        id: deletedVersion.id,
+        name: deletedVersion.name
+      }
+    });
+    
+    console.log(`[${new Date().toISOString()}] 버전 삭제 성공:`, { taskId, versionId });
+    
+  } catch (error) {
+    console.error('버전 삭제 중 예상치 못한 오류:', error);
+    res.status(500).json({
+      error: 'Internal server error during version deletion',
+      message: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
   }
-  
-  // 버전 확인 성공
-  console.log(`버전 찾음: ${versionId}, 인덱스: ${versionIndex}`);
-  console.log(`삭제 전 버전 수: ${promptData.tasks[taskId].versions.length}`);
-  
-  // 버전 삭제 전 래퍼런스 보관
-  const deletedVersion = promptData.tasks[taskId].versions[versionIndex];
-  console.log(`삭제될 버전 정보:`, deletedVersion);
-  
-  // 버전 삭제
-  promptData.tasks[taskId].versions.splice(versionIndex, 1);
-  
-  console.log(`삭제 후 버전 수: ${promptData.tasks[taskId].versions.length}`);
-  console.log('=== 디버깅 정보 끝 ===\n');
-  
-  // 데이터 저장
-  saveData();
-  res.json({ 
-    success: true,
-    message: `버전 ${versionId} 삭제 성공`, 
-    deletedVersion: {
-      id: deletedVersion.id,
-      name: deletedVersion.name
-    }
-  });
-  console.log(`[${new Date().toISOString()}] 버전 삭제 성공:`, { taskId, versionId });
 });
 
 // 3. Template Variable Management
@@ -488,6 +553,109 @@ app.post('/api/variable-presets/:taskId', (req, res) => {
   res.json({ success: true });
 });
 
+// 7. Group Management APIs (새로 추가)
+// 그룹 목록 조회
+app.get('/api/groups', (req, res) => {
+  try {
+    // 모든 태스크에서 사용 중인 그룹 추출
+    const groups = new Set();
+    Object.values(promptData.tasks).forEach(task => {
+      if (task.group) {
+        groups.add(task.group);
+      }
+    });
+    
+    // 기본 그룹은 항상 포함
+    groups.add('기본 그룹');
+    
+    const groupList = Array.from(groups).sort();
+    console.log(`[${new Date().toISOString()}] 그룹 목록 조회:`, groupList);
+    
+    res.json({ groups: groupList });
+  } catch (error) {
+    console.error(`[${new Date().toISOString()}] 그룹 목록 조회 오류:`, error);
+    res.status(500).json({ error: 'Failed to fetch groups' });
+  }
+});
+
+// 그룹 추가
+app.post('/api/groups', (req, res) => {
+  try {
+    const { groupName } = req.body;
+    
+    if (!groupName || !groupName.trim()) {
+      return res.status(400).json({ error: 'Group name is required' });
+    }
+    
+    const trimmedName = groupName.trim();
+    console.log(`[${new Date().toISOString()}] 그룹 추가 요청:`, trimmedName);
+    
+    // 중복 체크 (현재 태스크들의 그룹 확인)
+    const existingGroups = new Set();
+    Object.values(promptData.tasks).forEach(task => {
+      if (task.group) {
+        existingGroups.add(task.group);
+      }
+    });
+    
+    if (existingGroups.has(trimmedName)) {
+      return res.status(409).json({ error: 'Group already exists' });
+    }
+    
+    // 그룹은 태스크 생성 시 자동으로 생성되므로 별도 저장은 필요 없음
+    console.log(`[${new Date().toISOString()}] 그룹 추가 성공:`, trimmedName);
+    
+    res.status(201).json({ 
+      success: true, 
+      message: `Group '${trimmedName}' created successfully`,
+      groupName: trimmedName
+    });
+  } catch (error) {
+    console.error(`[${new Date().toISOString()}] 그룹 추가 오류:`, error);
+    res.status(500).json({ error: 'Failed to create group' });
+  }
+});
+
+// 그룹 삭제
+app.delete('/api/groups/:groupName', (req, res) => {
+  try {
+    const { groupName } = req.params;
+    const decodedGroupName = decodeURIComponent(groupName);
+    
+    console.log(`[${new Date().toISOString()}] 그룹 삭제 요청:`, decodedGroupName);
+    
+    // 기본 그룹은 삭제 불가
+    if (decodedGroupName === '기본 그룹') {
+      return res.status(400).json({ error: 'Cannot delete default group' });
+    }
+    
+    // 해당 그룹에 속한 태스크들을 기본 그룹으로 이동
+    let movedTasksCount = 0;
+    Object.keys(promptData.tasks).forEach(taskId => {
+      if (promptData.tasks[taskId].group === decodedGroupName) {
+        promptData.tasks[taskId].group = '기본 그룹';
+        movedTasksCount++;
+      }
+    });
+    
+    saveData();
+    
+    console.log(`[${new Date().toISOString()}] 그룹 삭제 완료:`, {
+      deletedGroup: decodedGroupName,
+      movedTasks: movedTasksCount
+    });
+    
+    res.json({ 
+      success: true, 
+      message: `Group '${decodedGroupName}' deleted successfully`,
+      movedTasksCount
+    });
+  } catch (error) {
+    console.error(`[${new Date().toISOString()}] 그룹 삭제 오류:`, error);
+    res.status(500).json({ error: 'Failed to delete group' });
+  }
+});
+
 // Template rendering function
 function renderTemplate(template = "", data = {}) {
   return template.replace(/{{(.*?)}}/g, (_, key) => {
@@ -576,15 +744,19 @@ function saveData() {
   }
 }
 
-// Start server
+// 오치 또는 안전한 서버 리스타트
+// 실제 내용만 로깅
+// 로깅 준다
+
 app.listen(PORT, () => {
   // 환경 변수 출력
   console.log(`[${new Date().toISOString()}] 환경변수 설정:`);
   console.log(` - OPENAI_BASE_URL: ${process.env.OPENAI_BASE_URL || '(미설정 - 기본값 사용)'}`);
   console.log(` - OPENAI_MODEL: ${process.env.OPENAI_MODEL || '(미설정 - 기본값 사용)'}`);
   
-  console.log(`서버 실행 중: http://localhost:${PORT}`);
-  console.log(`데이터 저장 경로: ${dataPath}`);
-  console.log('현재 저장된 태스크 수:', Object.keys(promptData.tasks).length);
-  console.log('현재 메모리에 로드된 프롬프트 데이터:', JSON.stringify(promptData).length, 'bytes');
+  console.log(`🚀 서버 실행 중: http://localhost:${PORT}`);
+  console.log(`💾 데이터 저장 경로: ${dataPath}`);
+  console.log(`📁 현재 저장된 태스크 수: ${Object.keys(promptData.tasks).length}`);
+  console.log(`📊 현재 메모리에 로드된 프롬프트 데이터: ${JSON.stringify(promptData).length} bytes`);
+  console.log('\n🎉 준비 완료! 프론트엔드에서 연결하세요.');
 });

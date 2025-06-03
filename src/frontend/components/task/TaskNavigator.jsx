@@ -1,26 +1,68 @@
 import React, { useState, useEffect } from 'react';
 import { useStore } from '../../store.jsx';
-import TaskTree from './TaskTree.jsx';
+import TaskTreeOptimized from './TaskTreeOptimized.jsx';
 import TaskActions from './TaskActions.jsx';
 import TaskDetail from './detail/TaskDetail.jsx';
 import Search from '../common/Search.jsx';
 import Button from '../common/Button.jsx';
 
-function TaskNavigator({ tasks, currentTask, onSelectTask }) {
+function TaskNavigator({ tasks, currentTask, onSelectTask, isFullScreen = false }) {
+  const { availableGroups } = useStore();
   const [searchQuery, setSearchQuery] = useState('');
   const [viewMode, setViewMode] = useState('tree'); // 'tree', 'recent', 'favorites', 'detail'
   const [expandedGroups, setExpandedGroups] = useState({});
   
-  // 태스크 선택 시 자동으로 상세 보기로 전환
+  // 디버깅: availableGroups 상태 확인
   useEffect(() => {
-    if (currentTask) {
-      setViewMode('detail');
+    console.log('TaskNavigator - availableGroups 상태:', availableGroups);
+    console.log('TaskNavigator - availableGroups 길이:', availableGroups?.length);
+  }, [availableGroups]);
+  
+  // 태스크 삭제 시 화면 전환 처리
+  useEffect(() => {
+    // currentTask가 null이 되면 (삭제된 경우) tree 뷰로 전환
+    if (!currentTask && viewMode === 'detail') {
+      console.log('태스크가 삭제되어 tree 뷰로 전환');
+      setViewMode('tree');
     }
-  }, [currentTask]);
+  }, [currentTask, viewMode]);
+  
+  // 태스크 목록에서 현재 선택된 태스크가 사라진 경우 처리
+  useEffect(() => {
+    if (currentTask && tasks && !tasks[currentTask]) {
+      console.log('현재 선택된 태스크가 더 이상 존재하지 않음:', currentTask);
+      onSelectTask(null); // 태스크 선택 해제
+    }
+  }, [tasks, currentTask, onSelectTask]);
+  
+  // 태스크 선택 시 자동으로 상세 보기로 전환 (전체 화면 모드가 아닌 경우에만)
+  useEffect(() => {
+    if (currentTask && !isFullScreen) {
+      setViewMode('detail');
+    } else if (isFullScreen) {
+      // 전체 화면 모드에서는 항상 tree 모드 유지
+      setViewMode('tree');
+    }
+  }, [currentTask, isFullScreen]);
+  
+  // 새로운 태스크가 추가될 때 해당 그룹 자동 확장
+  useEffect(() => {
+    if (currentTask && tasks[currentTask]) {
+      const taskGroup = tasks[currentTask].group;
+      if (taskGroup) {
+        setExpandedGroups(prev => ({
+          ...prev,
+          [taskGroup]: true
+        }));
+      }
+    }
+  }, [currentTask, tasks]);
   
   // 그룹화된 태스크 (폴더 구조)
   const getGroupedTasks = () => {
-    return Object.entries(tasks).reduce((acc, [id, task]) => {
+    return Object.entries(tasks || {}).reduce((acc, [id, task]) => {
+      if (!task) return acc; // 태스크가 유효한지 확인
+      
       const group = task.group || '기본 그룹';
       if (!acc[group]) acc[group] = [];
       acc[group].push({ id, ...task });
@@ -29,19 +71,20 @@ function TaskNavigator({ tasks, currentTask, onSelectTask }) {
   };
   
   // 검색 필터링
-  const filteredTasks = Object.entries(tasks).filter(([id, task]) => {
-    return task.name.toLowerCase().includes(searchQuery.toLowerCase());
+  const filteredTasks = Object.entries(tasks || {}).filter(([id, task]) => {
+    return task && task.name && task.name.toLowerCase().includes((searchQuery || '').toLowerCase());
   });
   
   // 최근 작업한 태스크
   const getRecentTasks = () => {
-    return Object.entries(tasks)
+    return Object.entries(tasks || {})
+      .filter(([_, task]) => task && task.name) // 태스크가 유효한 경우만 포함
       .sort((a, b) => {
-        const aLastUpdated = a[1].versions && a[1].versions.length > 0 
-          ? new Date(a[1].versions[a[1].versions.length - 1].createdAt || 0) 
+        const aLastUpdated = a[1]?.versions && a[1].versions.length > 0 
+          ? new Date(a[1].versions[a[1].versions.length - 1]?.createdAt || 0) 
           : new Date(0);
-        const bLastUpdated = b[1].versions && b[1].versions.length > 0 
-          ? new Date(b[1].versions[b[1].versions.length - 1].createdAt || 0) 
+        const bLastUpdated = b[1]?.versions && b[1].versions.length > 0 
+          ? new Date(b[1].versions[b[1].versions.length - 1]?.createdAt || 0) 
           : new Date(0);
         return bLastUpdated - aLastUpdated;
       })
@@ -49,10 +92,14 @@ function TaskNavigator({ tasks, currentTask, onSelectTask }) {
       .map(([id, task]) => ({ id, ...task }));
   };
   
-  // 태스크 선택 이벤트
+  // 태스크 선택 이벤트 (전체 화면 모드에서는 상세 보기로 가지 않음)
   const handleSelectTask = (taskId) => {
     onSelectTask(taskId);
-    setViewMode('detail');
+    
+    if (!isFullScreen && taskId) {
+      // 사이드바 모드에서만 상세 보기로 전환
+      setViewMode('detail');
+    }
   };
   
   // 뒤로가기 버튼 핸들러
@@ -61,12 +108,14 @@ function TaskNavigator({ tasks, currentTask, onSelectTask }) {
   };
   
   // 빈 상태 표시
-  const isEmpty = Object.keys(tasks).length === 0;
+  const isEmpty = !tasks || Object.keys(tasks).length === 0;
   
   return (
     <div className="h-full flex flex-col">
       <div className="p-3 border-b border-gray-300 dark:border-gray-700">
-        <h2 className="text-lg font-semibold mb-2">태스크</h2>
+        <h2 className="text-lg font-semibold mb-2">
+          {isFullScreen ? '그룹 & 태스크 관리' : '태스크'}
+        </h2>
         {!isEmpty && (
           <Search 
             placeholder="태스크 검색..." 
@@ -76,7 +125,8 @@ function TaskNavigator({ tasks, currentTask, onSelectTask }) {
         )}
       </div>
       
-      {viewMode === 'detail' && currentTask ? (
+      {/* 전체 화면 모드에서는 detail 보기를 제공하지 않음 */}
+      {!isFullScreen && viewMode === 'detail' && currentTask ? (
         <>
           <div className="p-2 border-b border-gray-300 dark:border-gray-700">
             <Button
@@ -128,13 +178,16 @@ function TaskNavigator({ tasks, currentTask, onSelectTask }) {
                   <div className="text-gray-400 text-5xl mb-4">📋</div>
                   <h3 className="text-lg font-medium mb-2">태스크가 없습니다</h3>
                   <p className="text-gray-500 dark:text-gray-400 mb-4">
-                    아래 버튼을 눌러 첫 번째 태스크를 생성해보세요.
+                    {isFullScreen 
+                      ? '아래 버튼을 눌러 첫 번째 태스크를 생성해보세요.'
+                      : '새 태스크를 생성해서 시작해보세요.'
+                    }
                   </p>
                 </div>
               </div>
             ) : (
               viewMode === 'tree' && (
-                <TaskTree 
+                <TaskTreeOptimized 
                   tasks={searchQuery ? filteredTasks : getGroupedTasks()}
                   currentTask={currentTask}
                   onSelectTask={handleSelectTask}
@@ -146,6 +199,7 @@ function TaskNavigator({ tasks, currentTask, onSelectTask }) {
                     });
                   }}
                   isSearching={searchQuery.length > 0}
+                  isFullScreen={isFullScreen} // 전체 화면 모드 플래그 전달
                 />
               )
             )}
@@ -155,7 +209,11 @@ function TaskNavigator({ tasks, currentTask, onSelectTask }) {
                 {getRecentTasks().map(task => (
                   <div 
                     key={task.id}
-                    className={`p-2 rounded cursor-pointer ${currentTask === task.id ? 'bg-blue-100 dark:bg-blue-900' : 'hover:bg-gray-200 dark:hover:bg-gray-700'}`}
+                    className={`p-2 rounded cursor-pointer ${
+                      currentTask === task.id && !isFullScreen 
+                        ? 'bg-blue-100 dark:bg-blue-900' 
+                        : 'hover:bg-gray-200 dark:hover:bg-gray-700'
+                    }`}
                     onClick={() => handleSelectTask(task.id)}
                   >
                     <div className="flex items-center">
