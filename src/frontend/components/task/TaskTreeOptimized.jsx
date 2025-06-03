@@ -11,13 +11,68 @@ function TaskTreeOptimized({
   isSearching = false,
   isFullScreen = false // 전체 화면 모드 지원
 }) {
-  const { deleteGroup, addGroup, deleteTask, availableGroups } = useStore();
+  const { deleteGroup, addGroup, deleteTask, availableGroups, createTask, setCurrentTask } = useStore();
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(null);
   const [showAddGroup, setShowAddGroup] = useState(false);
   const [newGroupName, setNewGroupName] = useState('');
   const [showTaskDeleteConfirm, setShowTaskDeleteConfirm] = useState(null);
   const [hiddenTasks, setHiddenTasks] = useState(new Set()); // 즉시 숨길 태스크들
   const [hiddenGroups, setHiddenGroups] = useState(new Set()); // 즉시 숨길 그룹들
+  
+  // 그룹별 태스크 추가 상태 관리
+  const [addingTaskToGroup, setAddingTaskToGroup] = useState(null); // 어느 그룹에 태스크를 추가 중인지
+  const [newTaskName, setNewTaskName] = useState(''); // 새 태스크 이름
+  
+  // 그룹에 태스크 추가 함수
+  const handleAddTaskToGroup = useCallback(async (groupName) => {
+    if (!newTaskName.trim()) {
+      alert('태스크 이름을 입력해주세요.');
+      return;
+    }
+    
+    try {
+      console.log('그룹에 태스크 추가:', { groupName, taskName: newTaskName });
+      
+      // 즉시 UI 업데이트
+      flushSync(() => {
+        setNewTaskName('');
+        setAddingTaskToGroup(null);
+      });
+      
+      // 백그라운드에서 태스크 생성
+      const taskId = await createTask(newTaskName.trim(), groupName);
+      console.log('그룹에 태스크 추가 성공:', taskId);
+      
+      // 새로 생성된 태스크 선택 (전체 화면 모드에서만)
+      if (isFullScreen) {
+        setTimeout(() => {
+          setCurrentTask(taskId);
+        }, 100);
+      }
+      
+      // 생성 성공 피드백
+      const successMsg = document.createElement('div');
+      successMsg.className = 'fixed top-4 right-4 bg-green-500 text-white px-4 py-2 rounded shadow-lg z-50 max-w-sm';
+      successMsg.textContent = `"그룹: ${groupName}"에 "태스크: ${newTaskName.trim()}"이 추가되었습니다.`;
+      document.body.appendChild(successMsg);
+      
+      setTimeout(() => {
+        if (successMsg.parentNode) {
+          successMsg.parentNode.removeChild(successMsg);
+        }
+      }, 3000);
+      
+    } catch (error) {
+      console.error('그룹에 태스크 추가 오류:', error);
+      alert('태스크 추가 중 오류가 발생했습니다: ' + error.message);
+    }
+  }, [newTaskName, createTask, setCurrentTask, isFullScreen]);
+  
+  // 태스크 추가 취소
+  const handleCancelAddTask = useCallback(() => {
+    setAddingTaskToGroup(null);
+    setNewTaskName('');
+  }, []);
   
   // 태스크 즉시 삭제 (UI만)
   const hideTaskInstantly = useCallback((taskId) => {
@@ -203,8 +258,9 @@ function TaskTreeOptimized({
             </div>
             
             {/* 그룹이 확장되어 있고 태스크가 있는 경우에만 태스크 목록 표시 */}
-            {expandedGroups[groupName] && groupTasks.length > 0 && (
+            {expandedGroups[groupName] && (
               <div className="pl-4 border-t border-gray-200 dark:border-gray-700">
+                {/* 기존 태스크 목록 */}
                 {groupTasks.map(task => (
                   <div 
                     key={task.id}
@@ -295,15 +351,81 @@ function TaskTreeOptimized({
                     </div>
                   </div>
                 ))}
-              </div>
-            )}
-            
-            {/* 그룹이 확장되어 있지만 태스크가 없는 경우 빈 상태 표시 */}
-            {expandedGroups[groupName] && groupTasks.length === 0 && (
-              <div className="pl-4 pt-2 pb-2 border-t border-gray-200 dark:border-gray-700">
-                <div className="text-gray-500 dark:text-gray-400 text-sm text-center py-2">
-                  이 그룹에는 태스크가 없습니다.
-                </div>
+                
+                {/* 인라인 태스크 추가 UI */}
+                {addingTaskToGroup === groupName ? (
+                  <div className="p-2 bg-gray-50 dark:bg-gray-800 border-t border-gray-200 dark:border-gray-600">
+                    <div className="flex items-center space-x-2">
+                      <span className="text-gray-500">📄</span>
+                      <input
+                        type="text"
+                        className="flex-1 px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 dark:text-white"
+                        placeholder="새 태스크 이름 입력..."
+                        value={newTaskName}
+                        onChange={(e) => setNewTaskName(e.target.value)}
+                        onKeyPress={(e) => {
+                          if (e.key === 'Enter') {
+                            handleAddTaskToGroup(groupName);
+                          } else if (e.key === 'Escape') {
+                            handleCancelAddTask();
+                          }
+                        }}
+                        autoFocus
+                      />
+                      <button
+                        className="px-2 py-1 text-xs bg-blue-500 text-white hover:bg-blue-600 rounded"
+                        onClick={() => handleAddTaskToGroup(groupName)}
+                        title="태스크 추가"
+                      >
+                        추가
+                      </button>
+                      <button
+                        className="px-2 py-1 text-xs text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 rounded"
+                        onClick={handleCancelAddTask}
+                        title="취소"
+                      >
+                        취소
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  /* 태스크 추가 버튼 */
+                  <div className="p-2 border-t border-gray-200 dark:border-gray-600">
+                    <button
+                      className="w-full p-2 text-sm text-gray-500 dark:text-gray-400 hover:text-blue-500 dark:hover:text-blue-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded flex items-center justify-center"
+                      onClick={() => {
+                        setAddingTaskToGroup(groupName);
+                        setNewTaskName('');
+                      }}
+                    >
+                      <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                      </svg>
+                      그룹에 태스크 추가
+                    </button>
+                  </div>
+                )}
+                
+                {/* 그룹에 태스크가 없는 경우 빈 상태 표시 */}
+                {groupTasks.length === 0 && addingTaskToGroup !== groupName && (
+                  <div className="p-2 border-t border-gray-200 dark:border-gray-600">
+                    <div className="text-gray-500 dark:text-gray-400 text-sm text-center py-2">
+                      이 그룹에는 태스크가 없습니다.
+                    </div>
+                    <button
+                      className="w-full p-2 text-sm text-blue-500 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900 rounded flex items-center justify-center"
+                      onClick={() => {
+                        setAddingTaskToGroup(groupName);
+                        setNewTaskName('');
+                      }}
+                    >
+                      <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                      </svg>
+                      첫 번째 태스크 추가
+                    </button>
+                  </div>
+                )}
               </div>
             )}
           </div>
