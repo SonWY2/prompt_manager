@@ -86,3 +86,8 @@ html.dark {
 button {
   @apply transition-colors duration-150;
 }
+
+/* 줄바꿈을 유지하면서 자동 줄바꿈을 허용하는 클래스 */
+.whitespace-pre-wrap {
+  white-space: pre-wrap;
+}

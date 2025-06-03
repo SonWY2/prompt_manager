@@ -1,3 +1,4 @@
+// src/frontend/App.jsx
 import React, { useState, useEffect } from 'react';
 import { useStore } from './store.jsx';
 import ThreeColumnLayout from './components/layout/ThreeColumnLayout.jsx';
@@ -21,38 +22,57 @@ function App() {
   } = useStore();
   
   // URL 기반 라우팅 상태
-  const [currentView, setCurrentView] = useState('task-list'); // 'task-list' 또는 'task-detail'
+  // 최초 접속 시 URL에 task ID가 없으므로 'task-list' (메인 화면)
+  // URL에 task ID가 있으면 'task-detail' (프롬프트 목록 화면)
+  const [currentView, setCurrentView] = useState('task-list'); 
   
+  const [initialLoadHandled, setInitialLoadHandled] = useState(false); // 초기 로드 핸들링 여부 추적 상태
+
   // URL에서 태스크 ID 추출 및 초기 상태 설정
   useEffect(() => {
+    // tasks가 로드되지 않았고, 아직 초기 로드가 처리되지 않았다면 대기
+    if (Object.keys(tasks).length === 0 && !initialLoadHandled) {
+      console.log('🔗 App: tasks 데이터 로드 대기 중...');
+      return; // tasks가 로드될 때까지 대기
+    }
+
+    // 이미 초기 로드가 처리되었으면 다시 실행하지 않음 (tasks 업데이트 시 중복 실행 방지)
+    if (initialLoadHandled) {
+        console.log('🔗 App: 초기 로드 이미 처리됨. URL 상태 재확인 스킵.');
+        return;
+    }
+
     const urlParams = new URLSearchParams(window.location.search);
     const taskIdFromUrl = urlParams.get('task');
     
-    console.log('🔗 URL에서 태스크 ID 확인:', taskIdFromUrl);
+    console.log('🔗 App: URL에서 태스크 ID 확인:', taskIdFromUrl);
     
-    if (taskIdFromUrl && tasks[taskIdFromUrl]) {
-      // URL에 유효한 태스크 ID가 있으면 해당 태스크 선택
-      console.log('✅ URL의 태스크 ID로 화면 설정:', taskIdFromUrl);
-      setCurrentTask(taskIdFromUrl);
-      setCurrentView('task-detail');
-    } else if (taskIdFromUrl && !tasks[taskIdFromUrl]) {
-      // URL에 있는 태스크가 존재하지 않으면 기본 화면으로
-      console.log('❌ URL의 태스크 ID가 존재하지 않음, 기본 화면으로 이동');
-      setCurrentView('task-list');
-      setCurrentTask(null);
-      // URL에서 task 파라미터 제거
-      window.history.replaceState({}, '', window.location.pathname);
+    if (taskIdFromUrl) {
+      if (tasks[taskIdFromUrl]) {
+          // URL에 유효한 태스크 ID가 있고, tasks에 해당 태스크가 로드됨
+          console.log('✅ App: URL의 태스크 ID로 화면 설정:', taskIdFromUrl);
+          setCurrentTask(taskIdFromUrl);
+          setCurrentView('task-detail');
+      } else { 
+          // URL에 태스크 ID가 있지만, tasks에 해당 태스크가 로드되지 않음 (잘못된 ID이거나 삭제된 ID)
+          console.log('❌ App: URL의 태스크 ID가 유효하지 않거나 존재하지 않음. 기본 화면으로 이동:', taskIdFromUrl);
+          setCurrentTask(null);
+          setCurrentView('task-list');
+          // URL에서 task 파라미터 제거
+          window.history.replaceState({}, '', window.location.pathname);
+      }
     } else {
-      // URL에 태스크 ID가 없으면 기본 화면 (그룹&태스크)
-      console.log('📋 기본 화면으로 설정: 그룹&태스크 목록');
-      setCurrentView('task-list');
-      setCurrentTask(null);
+        // URL에 태스크 ID가 없음 -> 메인 화면
+        console.log('📋 App: URL에 태스크 ID 없음. 기본 화면 (태스크 목록)으로 설정.');
+        setCurrentTask(null);
+        setCurrentView('task-list');
     }
-  }, [tasks, setCurrentTask]);
-  
+    setInitialLoadHandled(true); // 초기 로드 처리 완료
+  }, [tasks, setCurrentTask, initialLoadHandled]); // initialLoadHandled를 의존성에 추가
+
   // 태스크 선택 핸들러 - URL도 함께 업데이트
   const handleSelectTask = (taskId) => {
-    console.log('🎯 태스크 선택:', taskId);
+    console.log('🎯 App: 태스크 선택:', taskId);
     
     if (taskId) {
       // 태스크 선택 시
@@ -63,7 +83,7 @@ function App() {
       const newUrl = `${window.location.pathname}?task=${taskId}`;
       window.history.pushState({ taskId, view: 'task-detail' }, '', newUrl);
       
-      console.log('🔗 URL 업데이트:', newUrl);
+      console.log('🔗 App: URL 업데이트:', newUrl);
     } else {
       // 태스크 선택 해제 시 (뒤로가기 등)
       setCurrentTask(null);
@@ -72,26 +92,28 @@ function App() {
       // URL에서 task 파라미터 제거
       window.history.pushState({ view: 'task-list' }, '', window.location.pathname);
       
-      console.log('🏠 기본 화면으로 돌아가기');
+      console.log('🏠 App: 기본 화면으로 돌아가기 (URL 파라미터 제거)');
     }
   };
   
   // 브라우저 뒤로가기/앞으로가기 처리
   useEffect(() => {
     const handlePopState = (event) => {
-      console.log('🔄 브라우저 네비게이션 이벤트:', event.state);
+      console.log('🔄 App: 브라우저 네비게이션 이벤트:', event.state);
       
       const urlParams = new URLSearchParams(window.location.search);
       const taskIdFromUrl = urlParams.get('task');
       
+      // popstate 발생 시, tasks 데이터가 이미 로드되었다고 가정
+      // 또는, tasks가 비어있을 때도 url에 task 파라미터가 없으면 task-list로 이동
       if (taskIdFromUrl && tasks[taskIdFromUrl]) {
         setCurrentTask(taskIdFromUrl);
         setCurrentView('task-detail');
-        console.log('🎯 브라우저 네비게이션으로 태스크 선택:', taskIdFromUrl);
+        console.log('🎯 App: 브라우저 네비게이션으로 태스크 선택:', taskIdFromUrl);
       } else {
         setCurrentTask(null);
         setCurrentView('task-list');
-        console.log('🏠 브라우저 네비게이션으로 기본 화면');
+        console.log('🏠 App: 브라우저 네비게이션으로 기본 화면');
       }
     };
     
@@ -108,6 +130,22 @@ function App() {
     const interval = setInterval(checkServerStatus, 300000); // 5분 = 300,000ms
     return () => clearInterval(interval);
   }, [loadTasks, checkServerStatus]);
+
+  // 메인 콘텐츠 영역에 표시될 메시지 컴포넌트
+  const MainContentPlaceholder = () => (
+    <div className="flex-1 flex items-center justify-center text-gray-500 dark:text-gray-400 p-4">
+      <div className="text-center space-y-4">
+        <div className="text-6xl">✨</div>
+        <h3 className="text-xl font-semibold">Prompt Manager에 오신 것을 환영합니다!</h3>
+        <p className="max-w-md mx-auto">
+          왼쪽 패널에서 기존 태스크를 선택하거나, 새로운 태스크를 생성하여 프롬프트 관리를 시작하세요.
+        </p>
+        <p className="text-sm text-gray-400">
+          태스크를 선택하면 프롬프트 편집기 및 결과 뷰어가 여기에 표시됩니다.
+        </p>
+      </div>
+    </div>
+  );
 
   return (
     <div className={`app ${isDarkMode ? 'dark' : 'light'}`}>
@@ -132,7 +170,7 @@ function App() {
             
             {/* 현재 화면 표시 */}
             <div className="text-sm text-gray-300">
-              {currentView === 'task-list' ? '📋 그룹 & 태스크' : '⚙️ 프롬프트 버전 관리'}
+              {currentView === 'task-list' ? '📋 메인 화면' : '⚙️ 프롬프트 버전 관리'}
             </div>
             
             {/* 서버 상태 인디케이터 */}
@@ -174,45 +212,41 @@ function App() {
           </div>
         </header>
         
-        {/* 메인 콘텐츠 */}
+        {/* 메인 콘텐츠 - 항상 3단 레이아웃 사용 */}
         <div className="flex-1 overflow-hidden">
-          {currentView === 'task-list' ? (
-            /* 기본 화면: 그룹&태스크 전체 화면 */
-            <div className="h-full">
+          <ThreeColumnLayout
+            leftPanel={
               <TaskNavigator 
                 tasks={tasks}
-                currentTask={null} // 기본 화면에서는 선택된 태스크 없음
+                currentTask={currentTask}
                 onSelectTask={handleSelectTask}
-                isFullScreen={true} // 전체 화면 모드 플래그
+                // isFullScreen prop은 TaskNavigator 내부에서 더 이상 사용하지 않음
+                // 대신 TaskNavigator는 항상 사이드바 역할
               />
-            </div>
-          ) : (
-            /* 태스크 선택 시: 3단 레이아웃 (프롬프트 버전 관리) */
-            <ThreeColumnLayout
-              leftPanel={
-                <TaskNavigator 
-                  tasks={tasks}
-                  currentTask={currentTask}
-                  onSelectTask={handleSelectTask}
-                  isFullScreen={false} // 사이드바 모드
-                />
-              }
-              centerPanel={
+            }
+            centerPanel={
+              currentView === 'task-list' ? (
+                <MainContentPlaceholder /> // 메인 화면일 때 빈 화면 메시지
+              ) : (
                 <PromptEditor 
                   taskId={currentTask}
                   versionId={currentVersion}
                 />
-              }
-              rightPanel={
+              )
+            }
+            rightPanel={
+              currentView === 'task-list' ? (
+                <MainContentPlaceholder /> // 메인 화면일 때 빈 화면 메시지
+              ) : (
                 <ResultViewer 
                   taskId={currentTask}
                   versionId={currentVersion}
                 />
-              }
-              leftPanelWidth={20} // 초기 너비 %
-              rightPanelWidth={30} // 초기 너비 %
-            />
-          )}
+              )
+            }
+            leftPanelWidth={20} // 초기 너비 %
+            rightPanelWidth={30} // 초기 너비 %
+          />
         </div>
       </div>
     </div>

@@ -1,3 +1,4 @@
+// src/frontend/components/task/TaskNavigator.jsx
 import React, { useState, useEffect } from 'react';
 import { useStore } from '../../store.jsx';
 import TaskTreeOptimized from './TaskTreeOptimized.jsx';
@@ -6,9 +7,11 @@ import TaskDetail from './detail/TaskDetail.jsx';
 import Search from '../common/Search.jsx';
 import Button from '../common/Button.jsx';
 
-function TaskNavigator({ tasks, currentTask, onSelectTask, isFullScreen = false }) {
+// TaskNavigator는 이제 항상 사이드바 역할을 합니다.
+function TaskNavigator({ tasks, currentTask, onSelectTask }) { // isFullScreen prop 제거
   const { availableGroups } = useStore();
   const [searchQuery, setSearchQuery] = useState('');
+  // viewMode는 TaskNavigator 내부에서 태스크 목록(tree, recent, favorites)과 태스크 상세 보기(detail)를 전환하는 데 사용
   const [viewMode, setViewMode] = useState('tree'); // 'tree', 'recent', 'favorites', 'detail'
   const [expandedGroups, setExpandedGroups] = useState({});
   
@@ -35,15 +38,15 @@ function TaskNavigator({ tasks, currentTask, onSelectTask, isFullScreen = false 
     }
   }, [tasks, currentTask, onSelectTask]);
   
-  // 태스크 선택 시 자동으로 상세 보기로 전환 (전체 화면 모드가 아닌 경우에만)
+  // 태스크 선택 시 자동으로 상세 보기로 전환
+  // isFullScreen prop이 제거되었으므로 항상 상세 보기로 전환 가능
   useEffect(() => {
-    if (currentTask && !isFullScreen) {
+    if (currentTask) {
       setViewMode('detail');
-    } else if (isFullScreen) {
-      // 전체 화면 모드에서는 항상 tree 모드 유지
-      setViewMode('tree');
+    } else {
+      setViewMode('tree'); // 태스크 선택 해제 시 다시 목록으로
     }
-  }, [currentTask, isFullScreen]);
+  }, [currentTask]);
   
   // 새로운 태스크가 추가될 때 해당 그룹 자동 확장
   useEffect(() => {
@@ -78,7 +81,7 @@ function TaskNavigator({ tasks, currentTask, onSelectTask, isFullScreen = false 
   // 최근 작업한 태스크
   const getRecentTasks = () => {
     return Object.entries(tasks || {})
-      .filter(([_, task]) => task && task.name) // 태스크가 유효한 경우만 포함
+      .filter(([_, task]) => task && task.name) 
       .sort((a, b) => {
         const aLastUpdated = a[1]?.versions && a[1].versions.length > 0 
           ? new Date(a[1].versions[a[1].versions.length - 1]?.createdAt || 0) 
@@ -90,16 +93,6 @@ function TaskNavigator({ tasks, currentTask, onSelectTask, isFullScreen = false 
       })
       .slice(0, 5)
       .map(([id, task]) => ({ id, ...task }));
-  };
-  
-  // 태스크 선택 이벤트 (전체 화면 모드에서는 상세 보기로 가지 않음)
-  const handleSelectTask = (taskId) => {
-    onSelectTask(taskId);
-    
-    if (!isFullScreen && taskId) {
-      // 사이드바 모드에서만 상세 보기로 전환
-      setViewMode('detail');
-    }
   };
   
   // 뒤로가기 버튼 핸들러
@@ -114,7 +107,7 @@ function TaskNavigator({ tasks, currentTask, onSelectTask, isFullScreen = false 
     <div className="h-full flex flex-col">
       <div className="p-3 border-b border-gray-300 dark:border-gray-700">
         <h2 className="text-lg font-semibold mb-2">
-          {isFullScreen ? '그룹 & 태스크 관리' : '태스크'}
+          태스크
         </h2>
         {!isEmpty && (
           <Search 
@@ -125,8 +118,7 @@ function TaskNavigator({ tasks, currentTask, onSelectTask, isFullScreen = false 
         )}
       </div>
       
-      {/* 전체 화면 모드에서는 detail 보기를 제공하지 않음 */}
-      {!isFullScreen && viewMode === 'detail' && currentTask ? (
+      {viewMode === 'detail' && currentTask ? ( // 상세 보기 모드
         <>
           <div className="p-2 border-b border-gray-300 dark:border-gray-700">
             <Button
@@ -146,7 +138,7 @@ function TaskNavigator({ tasks, currentTask, onSelectTask, isFullScreen = false 
             <TaskDetail taskId={currentTask} />
           </div>
         </>
-      ) : (
+      ) : ( // 목록 보기 모드 (tree, recent, favorites)
         <>
           {!isEmpty && (
             <div className="flex p-2 gap-1 border-b border-gray-300 dark:border-gray-700">
@@ -178,10 +170,7 @@ function TaskNavigator({ tasks, currentTask, onSelectTask, isFullScreen = false 
                   <div className="text-gray-400 text-5xl mb-4">📋</div>
                   <h3 className="text-lg font-medium mb-2">태스크가 없습니다</h3>
                   <p className="text-gray-500 dark:text-gray-400 mb-4">
-                    {isFullScreen 
-                      ? '아래 버튼을 눌러 첫 번째 태스크를 생성해보세요.'
-                      : '새 태스크를 생성해서 시작해보세요.'
-                    }
+                    아래 버튼을 눌러 첫 번째 태스크를 생성해보세요.
                   </p>
                 </div>
               </div>
@@ -190,7 +179,7 @@ function TaskNavigator({ tasks, currentTask, onSelectTask, isFullScreen = false 
                 <TaskTreeOptimized 
                   tasks={searchQuery ? filteredTasks : getGroupedTasks()}
                   currentTask={currentTask}
-                  onSelectTask={handleSelectTask}
+                  onSelectTask={onSelectTask} // onSelectTask는 App.jsx에서 넘어온 그대로 사용
                   expandedGroups={expandedGroups}
                   onToggleGroup={(group) => {
                     setExpandedGroups({
@@ -199,7 +188,8 @@ function TaskNavigator({ tasks, currentTask, onSelectTask, isFullScreen = false 
                     });
                   }}
                   isSearching={searchQuery.length > 0}
-                  isFullScreen={isFullScreen} // 전체 화면 모드 플래그 전달
+                  // isFullScreen prop은 TaskTreeOptimized 내부에서만 필요하다면 유지
+                  // TaskNavigator에서는 더 이상 이 prop을 제어하지 않음
                 />
               )
             )}
@@ -210,11 +200,11 @@ function TaskNavigator({ tasks, currentTask, onSelectTask, isFullScreen = false 
                   <div 
                     key={task.id}
                     className={`p-2 rounded cursor-pointer ${
-                      currentTask === task.id && !isFullScreen 
+                      currentTask === task.id
                         ? 'bg-blue-100 dark:bg-blue-900' 
                         : 'hover:bg-gray-200 dark:hover:bg-gray-700'
                     }`}
-                    onClick={() => handleSelectTask(task.id)}
+                    onClick={() => onSelectTask(task.id)}
                   >
                     <div className="flex items-center">
                       <span className="mr-2">📄</span>
