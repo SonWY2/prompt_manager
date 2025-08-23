@@ -7,12 +7,15 @@ const TaskNavigator = ({ tasks, currentTask, onSelectTask }) => {
   const [activeTab, setActiveTab] = useState('all'); // all, recent, favorites
   const [showTaskDeleteConfirm, setShowTaskDeleteConfirm] = useState(null);
 
+  const [isCreatingTask, setIsCreatingTask] = useState(false);
+  const [newTaskName, setNewTaskName] = useState('');
+
   const handleNewTask = async () => {
+    if (!newTaskName.trim()) return;
     try {
-      const taskName = prompt('새 태스크 이름을 입력하세요:');
-      if (taskName && taskName.trim()) {
-        await createTask(taskName.trim());
-      }
+      await createTask(newTaskName.trim());
+      setNewTaskName('');
+      setIsCreatingTask(false);
     } catch (error) {
       console.error('태스크 생성 실패:', error);
       alert('태스크 생성에 실패했습니다.');
@@ -40,12 +43,28 @@ const TaskNavigator = ({ tasks, currentTask, onSelectTask }) => {
       <div className="panel-header">
         <div className="flex items-center justify-between mb-4">
           <h2 className="panel-title">Tasks</h2>
-          <button 
-            className="btn btn-primary"
-            onClick={handleNewTask}
-          >
-            + New Task
-          </button>
+          {isCreatingTask ? (
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                value={newTaskName}
+                onChange={(e) => setNewTaskName(e.target.value)}
+                placeholder="Enter a task name..."
+                className="input text-sm flex-1"
+                autoFocus
+                onKeyPress={(e) => e.key === 'Enter' && handleNewTask()}
+              />
+              <button className="btn btn-primary" onClick={handleNewTask}>Create</button>
+              <button className="btn btn-secondary" onClick={() => setIsCreatingTask(false)}>Cancel</button>
+            </div>
+          ) : (
+            <button
+              className="btn btn-primary"
+              onClick={() => setIsCreatingTask(true)}
+            >
+              + New Task
+            </button>
+          )}
         </div>
 
         {/* Tabs */}

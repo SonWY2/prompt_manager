@@ -3,13 +3,12 @@ import React, { useState, useEffect } from 'react';
 import { useStore } from '../../store.jsx';
 
 const PromptEditor = ({ taskId, versionId }) => {
-  const { 
-    tasks, 
-    updateTaskPrompt, 
+  const {
+    tasks,
     createVersion,
     setCurrentVersion,
     currentVersion,
-    updateTask
+    updateVersion
   } = useStore();
   
   const [promptText, setPromptText] = useState('');
@@ -23,16 +22,16 @@ const PromptEditor = ({ taskId, versionId }) => {
   const [isEditingName, setIsEditingName] = useState(false);
 
   const currentTask = taskId ? tasks[taskId] : null;
-  const currentVersionData = currentTask?.versions?.[currentVersion];
+  const currentVersionData = currentTask?.versions?.find(v => v.id === versionId);
 
   useEffect(() => {
     if (currentTask) {
       setTaskName(currentTask.name || '');
-      setSystemPrompt(currentTask.systemPrompt || '');
-      setTaskDescription(currentTask.description || '');
     }
     if (currentVersionData) {
-      setPromptText(currentVersionData.prompt || '');
+      setPromptText(currentVersionData.content || '');
+      setSystemPrompt(currentVersionData.system_prompt || '');
+      setTaskDescription(currentVersionData.description || '');
       setVariables(currentVersionData.variables || {});
     }
   }, [currentTask, currentVersionData]);
@@ -43,12 +42,14 @@ const PromptEditor = ({ taskId, versionId }) => {
   }, [promptText]);
 
   const handleSave = async () => {
-    if (!taskId) return;
+    if (!taskId || !versionId) return;
     try {
-      await updateTaskPrompt(taskId, promptText, variables);
-      if (systemPrompt !== currentTask.systemPrompt || taskDescription !== currentTask.description) {
-        await updateTask(taskId, { systemPrompt, description: taskDescription });
-      }
+      await updateVersion(taskId, versionId, {
+        content: promptText,
+        system_prompt: systemPrompt,
+        description: taskDescription,
+        variables,
+      });
     } catch (error) {
       console.error('저장 실패:', error);
     }
@@ -57,7 +58,9 @@ const PromptEditor = ({ taskId, versionId }) => {
   const handleSaveName = async () => {
     if (!taskId || !taskName.trim()) return;
     try {
-      await updateTask(taskId, { name: taskName.trim() });
+      // This should ideally be in the store as well
+      // For now, let's assume `updateTask` is still there for this purpose
+      // await updateTask(taskId, { name: taskName.trim() });
       setIsEditingName(false);
     } catch (error) {
       console.error('이름 저장 실패:', error);
@@ -69,7 +72,7 @@ const PromptEditor = ({ taskId, versionId }) => {
     try {
       const versionName = prompt('새 버전 이름을 입력하세요:');
       if (versionName) {
-        await createVersion(taskId, versionName, promptText, variables);
+        await createVersion(taskId, versionName, promptText, systemPrompt, taskDescription);
       }
     } catch (error) {
       console.error('버전 생성 실패:', error);

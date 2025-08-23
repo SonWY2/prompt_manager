@@ -189,30 +189,6 @@ app.post('/api/tasks', (req, res) => {
   });
 });
 
-// 새로 추가: 태스크 업데이트 API
-app.put('/api/tasks/:taskId', (req, res) => {
-  const { taskId } = req.params;
-  const updates = req.body;
-  
-  if (!promptData.tasks[taskId]) {
-    return res.status(404).json({ error: 'Task not found' });
-  }
-  
-  // 태스크 정보 업데이트
-  promptData.tasks[taskId] = {
-    ...promptData.tasks[taskId],
-    ...updates
-  };
-  
-  saveData();
-  res.json({ 
-    success: true,
-    task: {
-      id: taskId,
-      ...promptData.tasks[taskId]
-    }
-  });
-});
 
 // 새로 추가: 태스크 삭제 API
 app.delete('/api/tasks/:taskId', (req, res) => {
