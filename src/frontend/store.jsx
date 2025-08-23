@@ -462,9 +462,11 @@ export const PromptProvider = ({ children }) => {
       setVersions(serverVersions); // Keep this for other components that might use it directly
 
       if (serverVersions.length > 0) {
-        setCurrentVersion(serverVersions[0].id);
-        setCurrentSystemPrompt(serverVersions[0].system_prompt || 'You are a helpful assistant.');
+        // Don't select a version by default
+        setCurrentVersion(null);
+        setCurrentSystemPrompt('You are a helpful assistant.');
         setIsEditMode(false);
+        // We can still load variables for the task
         loadTemplateVariables(taskId);
       } else {
         setCurrentVersion(null);
