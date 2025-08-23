@@ -112,7 +112,7 @@ const PromptEditor = ({ taskId, versionId }) => {
   if (!currentTask) {
     return (
       <div className="flex items-center justify-center h-full">
-        <p className="text-muted">태스크를 선택해 주세요</p>
+        <p className="text-muted">Please select a task</p>
       </div>
     );
   }
@@ -120,7 +120,7 @@ const PromptEditor = ({ taskId, versionId }) => {
   const versions = currentTask.versions ? Object.entries(currentTask.versions) : [];
 
   return (
-    <div className="h-full flex flex-col overflow-hidden">
+    <>
       {/* Header */}
       <div className="panel-header">
         <div className="flex items-center justify-between mb-4">
@@ -143,7 +143,7 @@ const PromptEditor = ({ taskId, versionId }) => {
                 className="text-xl font-semibold cursor-pointer hover:opacity-75 transition-opacity"
                 style={{ color: 'var(--text-primary)' }}
                 onClick={() => setIsEditingName(true)}
-                title="클릭하여 이름 편집"
+                title="Click to edit name"
               >
                 {currentTask.name} ✏️
               </h2>
@@ -154,7 +154,7 @@ const PromptEditor = ({ taskId, versionId }) => {
                    background: 'rgba(34, 197, 94, 0.2)', 
                    color: 'var(--accent-success)' 
                  }}>
-              활성
+              Active
             </div>
           </div>
           
@@ -163,13 +163,13 @@ const PromptEditor = ({ taskId, versionId }) => {
               className="btn btn-secondary"
               onClick={() => navigator.clipboard.writeText(promptText)}
             >
-              📋 복제
+              📋 Copy
             </button>
             <button 
               className="btn btn-primary"
               onClick={handleNewVersion}
             >
-              🌿 새 버전
+              🌿 New Version
             </button>
           </div>
         </div>
@@ -194,16 +194,16 @@ const PromptEditor = ({ taskId, versionId }) => {
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto p-5 space-y-4" style={{ height: 0 }}>
+      <div className="space-y-4">
         {/* Description Section */}
         <div className="card">
           <h3 className="text-sm font-medium mb-3 flex items-center gap-2">
-            📝 프롬프트 설명
+            📝 Prompt Description
           </h3>
           <textarea
             value={taskDescription}
             onChange={(e) => setTaskDescription(e.target.value)}
-            placeholder="이 프롬프트의 목적과 사용법을 설명하세요..."
+            placeholder="Describe the purpose and usage of this prompt..."
             className="w-full h-20 p-3 bg-transparent border rounded-md text-sm resize-y"
             style={{ 
               borderColor: 'var(--border-primary)',
@@ -219,7 +219,7 @@ const PromptEditor = ({ taskId, versionId }) => {
             onClick={() => toggleSection('system')}
           >
             <h3 className="text-sm font-medium flex items-center gap-2">
-              🤖 시스템 프롬프트
+              🤖 System Prompt
             </h3>
             <span>{expandedSections.system ? '▲' : '▼'}</span>
           </div>
@@ -228,7 +228,7 @@ const PromptEditor = ({ taskId, versionId }) => {
             <textarea
               value={systemPrompt}
               onChange={(e) => setSystemPrompt(e.target.value)}
-              placeholder="시스템 프롬프트를 입력하세요... (AI의 역할과 지시사항을 정의)"
+              placeholder="Enter system prompt... (Defines AI's role and instructions)"
               className="w-full h-24 p-3 bg-transparent border rounded-md text-sm resize-y"
               style={{ 
                 borderColor: 'var(--border-primary)',
@@ -238,21 +238,21 @@ const PromptEditor = ({ taskId, versionId }) => {
           )}
         </div>
 
-        {/* Main Prompt Section - 가장 큰 영역 */}
+        {/* Main Prompt Section */}
         <div className="card">
           <h3 className="text-sm font-medium mb-3 flex items-center gap-2">
-            💬 메인 프롬프트
+            💬 Main Prompt
           </h3>
           <textarea
             value={promptText}
             onChange={(e) => setPromptText(e.target.value)}
-            placeholder="프롬프트를 입력하세요... (변수는 {{variable_name}} 형식으로 사용)"
+            placeholder="Enter prompt... (Use {{variable_name}} for variables)"
             className="w-full p-4 bg-transparent border-none resize-none text-sm font-mono"
             style={{ 
               color: 'var(--text-primary)',
               fontFamily: 'Courier New, monospace',
               lineHeight: '1.6',
-              height: '300px', // 줄인 높이
+              height: '300px',
               minHeight: '300px',
               resize: 'none'
             }}
@@ -266,9 +266,9 @@ const PromptEditor = ({ taskId, versionId }) => {
             onClick={() => toggleSection('variables')}
           >
             <h3 className="text-sm font-medium flex items-center gap-2">
-              🔧 템플릿 변수
+              🔧 Template Variables
               <span className="text-xs px-2 py-1 rounded bg-gray-700">
-                {extractedVariables.length}개
+                {extractedVariables.length}
               </span>
             </h3>
             <span>{expandedSections.variables ? '▲' : '▼'}</span>
@@ -276,27 +276,27 @@ const PromptEditor = ({ taskId, versionId }) => {
           
           {expandedSections.variables && (
             <div className="space-y-4">
-              {/* Add Variable - 변수명과 내용을 동시에 입력 */}
+              {/* Add Variable */}
               <div className="grid grid-cols-3 gap-3">
                 <input
                   type="text"
                   value={newVariable.name}
                   onChange={(e) => setNewVariable(prev => ({ ...prev, name: e.target.value }))}
                   className="input text-sm"
-                  placeholder="변수명"
+                  placeholder="Variable Name"
                 />
                 <input
                   type="text"
                   value={newVariable.value}
                   onChange={(e) => setNewVariable(prev => ({ ...prev, value: e.target.value }))}
                   className="input text-sm"
-                  placeholder="변수값"
+                  placeholder="Variable Value"
                 />
                 <button 
                   className="btn btn-primary"
                   onClick={handleAddVariable}
                 >
-                  추가
+                  Add
                 </button>
               </div>
 
@@ -304,8 +304,8 @@ const PromptEditor = ({ taskId, versionId }) => {
               <div className="space-y-2">
                 {extractedVariables.length === 0 ? (
                   <div className="text-center py-4" style={{ color: 'var(--text-muted)' }}>
-                    <p>프롬프트에 변수가 없습니다.</p>
-                    <p className="text-xs mt-1">변수를 사용하려면 <code>{'{{변수명}}'}</code> 형식으로 작성하세요.</p>
+                    <p>No variables in prompt.</p>
+                    <p className="text-xs mt-1">Use <code>{'{{variable_name}}'}</code> to add a variable.</p>
                   </div>
                 ) : (
                   extractedVariables.map(variable => (
@@ -323,14 +323,14 @@ const PromptEditor = ({ taskId, versionId }) => {
                           background: 'var(--bg-tertiary)',
                           color: 'var(--text-primary)'
                         }}
-                        placeholder={`${variable} 값을 입력하세요...`}
+                        placeholder={`Enter value for ${variable}...`}
                       />
                       <button
                         className="flex-shrink-0 text-xs px-2 py-1 rounded hover:bg-red-600 transition-colors"
                         style={{ color: 'var(--accent-danger)' }}
                         onClick={() => handleRemoveVariable(variable)}
                       >
-                        삭제
+                        Delete
                       </button>
                     </div>
                   ))
@@ -346,13 +346,13 @@ const PromptEditor = ({ taskId, versionId }) => {
             className="btn btn-secondary flex-1"
             onClick={() => setIsPreviewMode(!isPreviewMode)}
           >
-            👁️ {isPreviewMode ? '편집 모드' : '미리보기'}
+            👁️ {isPreviewMode ? 'Editor Mode' : 'Preview'}
           </button>
           <button 
             className="btn btn-primary flex-1"
             onClick={handleSave}
           >
-            💾 저장
+            💾 Save
           </button>
         </div>
 
@@ -360,7 +360,7 @@ const PromptEditor = ({ taskId, versionId }) => {
         {isPreviewMode && (
           <div className="card">
             <h4 className="text-sm font-medium mb-3" style={{ color: 'var(--text-primary)' }}>
-              미리보기
+              Preview
             </h4>
             
             {systemPrompt && (
@@ -370,7 +370,7 @@ const PromptEditor = ({ taskId, versionId }) => {
                      borderColor: 'var(--accent-success)'
                    }}>
                 <div className="text-xs mb-2" style={{ color: 'var(--accent-success)' }}>
-                  시스템 프롬프트:
+                  System Prompt:
                 </div>
                 <pre className="whitespace-pre-wrap text-sm"
                      style={{ color: 'var(--text-secondary)' }}>
@@ -392,7 +392,7 @@ const PromptEditor = ({ taskId, versionId }) => {
           </div>
         )}
       </div>
-    </div>
+    </>
   );
 };
 

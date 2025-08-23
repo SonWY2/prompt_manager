@@ -69,16 +69,16 @@ const TaskNavigator = ({ tasks, currentTask, onSelectTask }) => {
   };
 
   return (
-    <div className="h-full flex flex-col">
+    <>
       {/* Header */}
       <div className="panel-header">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="panel-title">태스크</h2>
+          <h2 className="panel-title">Tasks</h2>
           <button 
             className="btn btn-primary"
             onClick={handleNewTask}
           >
-            + 새 태스크
+            + New Task
           </button>
         </div>
 
@@ -88,25 +88,25 @@ const TaskNavigator = ({ tasks, currentTask, onSelectTask }) => {
             className={`tab ${activeTab === 'all' ? 'active' : ''}`}
             onClick={() => setActiveTab('all')}
           >
-            전체
+            All
           </button>
           <button 
             className={`tab ${activeTab === 'recent' ? 'active' : ''}`}
             onClick={() => setActiveTab('recent')}
           >
-            최근
+            Recent
           </button>
           <button 
             className={`tab ${activeTab === 'favorites' ? 'active' : ''}`}
             onClick={() => setActiveTab('favorites')}
           >
-            즐겨찾기
+            Favorites
           </button>
         </div>
       </div>
 
       {/* Task List */}
-      <div className="flex-1 overflow-y-auto p-5">
+      <div className="p-5">
         {Object.entries(folderStructure).map(([folderId, folder]) => {
           const isExpanded = expandedFolders.includes(folderId);
           const taskCount = folder.tasks.length;
@@ -188,17 +188,17 @@ const TaskNavigator = ({ tasks, currentTask, onSelectTask }) => {
         {Object.keys(tasks).length === 0 && (
           <div className="text-center py-12">
             <div className="text-4xl mb-4">📝</div>
-            <p className="text-muted mb-4">아직 태스크가 없습니다</p>
+            <p className="text-muted mb-4">No tasks yet</p>
             <button 
               className="btn btn-primary"
               onClick={handleNewTask}
             >
-              첫 번째 태스크 생성하기
+              Create your first task
             </button>
           </div>
         )}
       </div>
-    </div>
+    </>
   );
 };
 

@@ -1,11 +1,11 @@
 // src/frontend/App.jsx
 import React, { useState, useEffect } from 'react';
 import { useStore } from './store.jsx';
-import ThreeColumnLayout from './components/layout/ThreeColumnLayout.jsx';
 import TaskNavigator from './components/task/TaskNavigator.jsx';
 import PromptEditor from './components/prompt/PromptEditor.jsx';
 import ResultViewer from './components/result/ResultViewer.jsx';
 import LLMEndpointSettings from './components/settings/LLMEndpointSettings.jsx';
+import MainContent from './components/layout/MainContent.jsx';
 import { apiUrl } from './utils/api.js';
 import './App.css';
 
@@ -23,6 +23,8 @@ function App() {
     loadLlmEndpoints
   } = useStore();
   
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [activeTab, setActiveTab] = useState('editor'); // 'editor' or 'result'
   const [currentView, setCurrentView] = useState('task-list'); 
   const [initialLoadHandled, setInitialLoadHandled] = useState(false);
 
@@ -63,6 +65,7 @@ function App() {
     if (taskId) {
       setCurrentTask(taskId);
       setCurrentView('task-detail');
+      setActiveTab('editor'); // Reset to editor tab on new task selection
       const newUrl = `${window.location.pathname}?task=${taskId}`;
       window.history.pushState({ taskId, view: 'task-detail' }, '', newUrl);
     } else {
@@ -111,109 +114,55 @@ function App() {
     return () => clearInterval(interval);
   }, [loadTasks, loadLlmEndpoints, checkServerStatus]);
 
-  const MainContentPlaceholder = () => (
-    <div className="flex items-center justify-center h-full p-4">
-      <div className="text-center">
-        <div className="text-6xl mb-4">✨</div>
-        <h3 className="text-xl font-semibold text-primary mb-4">Prompt Manager에 오신 것을 환영합니다!</h3>
-        <p className="text-secondary max-w-md mx-auto mb-2">
-          왼쪽 패널에서 기존 태스크를 선택하거나, 새로운 태스크를 생성하여 프롬프트 관리를 시작하세요.
-        </p>
-        <p className="text-muted text-sm">
-          태스크를 선택하면 프롬프트 편집기 및 결과 뷰어가 여기에 표시됩니다.
-        </p>
-      </div>
-    </div>
-  );
 
   return (
     <div className="app">
       {/* Header */}
       <header className="app-header">
         <div className="header-left">
-          {/* Logo */}
+          <button
+            className="header-icon"
+            onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+            title={isSidebarCollapsed ? "Show sidebar" : "Collapse sidebar"}
+          >
+            {isSidebarCollapsed ? '▶️' : '◀️'}
+          </button>
           <div className="app-logo">⚡</div>
-          
-          {/* Brand & Version */}
           <div className="flex items-center">
             <h1 className="app-title">Prompt Manager</h1>
             <span className="app-version">v1.0.0</span>
           </div>
-          
-          {/* Current View */}
-          <div className="text-muted text-sm ml-4">
-            {currentView === 'task-list' ? '📋 메인 화면' : 
-             currentView === 'settings' ? '⚙️ 설정' :
-             '⚙️ 프롬프트 버전 관리'}
-          </div>
         </div>
         
         <div className="header-right">
-          {/* Search */}
-          <button className="header-icon" title="검색">
-            🔍
-          </button>
-          
-          {/* Settings */}
-          <button 
-            className="header-icon" 
-            onClick={handleOpenSettings}
-            title="설정"
-          >
-            ⚙️
-          </button>
-          
-          {/* Dark Mode Toggle */}
-          <button 
-            className="header-icon"
-            onClick={toggleDarkMode}
-            title={isDarkMode ? "라이트 모드로 전환" : "다크 모드로 전환"}
-          >
+          <button className="header-icon" title="검색">🔍</button>
+          <button className="header-icon" onClick={handleOpenSettings} title="설정">⚙️</button>
+          <button className="header-icon" onClick={toggleDarkMode} title={isDarkMode ? "라이트 모드로 전환" : "다크 모드로 전환"}>
             {isDarkMode ? '☀️' : '🌙'}
           </button>
-          
-          {/* AI Avatar */}
-          <div className="header-icon ai-avatar">
-            ✨
-          </div>
+          <div className="header-icon ai-avatar">✨</div>
         </div>
       </header>
       
-      {/* Main Content */}
-      <div className="main-content">
-        {currentView === 'settings' ? (
-          <LLMEndpointSettings />
-        ) : (
-          <ThreeColumnLayout
-            leftPanel={
-              <TaskNavigator 
-                tasks={tasks}
-                currentTask={currentTask}
-                onSelectTask={handleSelectTask}
-              />
-            }
-            centerPanel={
-              currentView === 'task-list' ? (
-                <MainContentPlaceholder />
-              ) : (
-                <PromptEditor 
-                  taskId={currentTask}
-                  versionId={currentVersion}
-                />
-              )
-            }
-            rightPanel={
-              currentView === 'task-list' ? (
-                <MainContentPlaceholder />
-              ) : (
-                <ResultViewer 
-                  taskId={currentTask}
-                  versionId={currentVersion}
-                />
-              )
-            }
+      {/* Main Layout */}
+      <div className="app-body">
+        {/* Sidebar */}
+        <aside className={`sidebar ${isSidebarCollapsed ? 'collapsed' : ''}`}>
+          <TaskNavigator
+            tasks={tasks}
+            currentTask={currentTask}
+            onSelectTask={handleSelectTask}
           />
-        )}
+        </aside>
+
+        {/* Main Content */}
+        <main className="main-content">
+          <MainContent
+            currentTask={currentTask}
+            currentVersion={currentVersion}
+            view={currentView}
+          />
+        </main>
       </div>
       
       {/* Status Bar */}
@@ -230,10 +179,7 @@ function App() {
                serverStatus === 'disconnected' ? '연결 실패' : '연결 중...'}
             </span>
           </div>
-          <span>OpenAI API</span>
-          <span>모델: gpt-4-turbo</span>
         </div>
-        
         <div className="status-right">
           <span>오늘 사용: 142 요청</span>
           <span>잔여 크레딧: $48.23</span>
