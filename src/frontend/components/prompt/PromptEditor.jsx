@@ -110,8 +110,6 @@ const PromptEditor = ({ taskId, versionId }) => {
     );
   }
 
-  const versions = currentTask.versions ? Object.entries(currentTask.versions) : [];
-
   return (
     <div className="h-full flex flex-col overflow-hidden">
       {/* Header */}
@@ -160,16 +158,16 @@ const PromptEditor = ({ taskId, versionId }) => {
         </div>
 
         {/* Version Timeline */}
-        {versions.length > 0 && (
+        {currentTask.versions && currentTask.versions.length > 0 && (
           <div className="version-timeline">
             <div className="timeline-line"></div>
-            {versions.map(([versionId, version], index) => (
-              <div key={versionId} className="timeline-item">
+            {currentTask.versions.map((version, index) => (
+              <div key={version.id} className="timeline-item">
                 <div 
-                  className={`timeline-dot ${currentVersion === versionId ? 'active' : ''}`}
-                  onClick={() => setCurrentVersion(versionId)}
+                  className={`timeline-dot ${currentVersion === version.id ? 'active' : ''}`}
+                  onClick={() => setCurrentVersion(version.id)}
                 />
-                <div className={`timeline-label ${currentVersion === versionId ? 'active' : ''}`}>
+                <div className={`timeline-label ${currentVersion === version.id ? 'active' : ''}`}>
                   {version.name || `v${index + 1}`}
                 </div>
               </div>

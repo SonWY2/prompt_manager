@@ -450,7 +450,16 @@ export const PromptProvider = ({ children }) => {
     try {
       const data = await fetchFromAPI(apiUrl(`/api/tasks/${taskId}/versions`));
       const serverVersions = data.versions || [];
-      setVersions(serverVersions);
+
+      setTasks(prevTasks => ({
+        ...prevTasks,
+        [taskId]: {
+          ...prevTasks[taskId],
+          versions: serverVersions
+        }
+      }));
+
+      setVersions(serverVersions); // Keep this for other components that might use it directly
 
       if (serverVersions.length > 0) {
         setCurrentVersion(serverVersions[0].id);
@@ -477,30 +486,30 @@ export const PromptProvider = ({ children }) => {
     try {
       const versionId = `v${Date.now()}`;
       const newVersion = {
-        id: versionId,
+        versionId: versionId, // The backend expects versionId
         name,
         content,
         system_prompt: systemPrompt,
         description,
-        createdAt: new Date().toISOString(),
-        results: [],
       };
 
-      setTasks(prevTasks => {
-        const newTasks = { ...prevTasks };
-        newTasks[taskId].versions.unshift(newVersion);
-        return newTasks;
-      });
-
-      await fetch(apiUrl(`/api/tasks/${taskId}/versions`), {
+      const response = await fetch(apiUrl(`/api/tasks/${taskId}/versions`), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newVersion),
       });
+
+      if (!response.ok) {
+        throw new Error('Failed to create version on the server');
+      }
+
+      // After creating, reload the versions to update the UI
+      loadVersions(taskId);
+
     } catch (error) {
       console.error('Error creating version:', error);
     }
-  }, []);
+  }, [loadVersions]);
   
   // 버전 선택 및 편집 모드 설정
   const selectVersion = useCallback((versionId, editMode = false) => {
@@ -516,25 +525,24 @@ export const PromptProvider = ({ children }) => {
   
   const updateVersion = useCallback(async (taskId, versionId, updates) => {
     try {
-      setTasks(prevTasks => {
-        const newTasks = { ...prevTasks };
-        const task = newTasks[taskId];
-        const versionIndex = task.versions.findIndex(v => v.id === versionId);
-        if (versionIndex !== -1) {
-          task.versions[versionIndex] = { ...task.versions[versionIndex], ...updates };
-        }
-        return newTasks;
-      });
-
-      await fetch(apiUrl(`/api/tasks/${taskId}/versions/${versionId}`), {
+      const response = await fetch(apiUrl(`/api/tasks/${taskId}/versions/${versionId}`), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updates),
       });
+
+      if (!response.ok) {
+        throw new Error('Failed to update version on the server');
+      }
+
+      // After a successful update, refetch the versions to ensure UI is in sync
+      loadVersions(taskId);
+
     } catch (error) {
       console.error('Error updating version:', error);
+      // Optionally, show an error message to the user
     }
-  }, []);
+  }, [loadVersions]);
   
   // 버전 상세 정보 확인
   const getVersionDetail = useCallback(async (taskId, versionId) => {

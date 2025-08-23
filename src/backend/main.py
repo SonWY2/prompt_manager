@@ -158,6 +158,7 @@ def get_version_detail(task_id: str, version_id: str):
 
 @app.post("/api/tasks/{task_id}/versions", status_code=201)
 def create_version(task_id: str, version: VersionCreate):
+    print(f"Creating version for task {task_id} with data: {version.dict()}")
     task = tasks_table.get(where('id') == task_id)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
