@@ -234,7 +234,7 @@ const PromptEditor = ({ taskId, versionId }) => {
           </div>
         ) : activeTab === 'prompt' ? (
           /* Prompt Tab */
-          <div className="flex flex-col h-full space-y-4">
+          <div className="space-y-4">
             {/* Description */}
             <div className="card">
               <h3 className="text-sm font-medium mb-3 flex items-center justify-between cursor-pointer" onClick={() => toggleSection('description')}>
@@ -280,7 +280,7 @@ const PromptEditor = ({ taskId, versionId }) => {
             </div>
 
             {/* Main Prompt */}
-            <div className="card flex flex-col flex-1">
+            <div className="card">
               <h3 className="text-sm font-medium mb-3 flex items-center justify-between cursor-pointer flex-shrink-0" onClick={() => toggleSection('main')}>
                 <span className="flex items-center gap-2">
                   💬 Main Prompt
@@ -292,7 +292,7 @@ const PromptEditor = ({ taskId, versionId }) => {
                   value={promptText}
                   onChange={(e) => setPromptText(e.target.value)}
                   placeholder="Enter prompt... (Use {{variable_name}} for variables)"
-                  className="w-full h-full p-3 bg-transparent border-none text-sm font-mono flex-1"
+                  className="w-full h-48 p-3 bg-transparent border-none text-sm font-mono"
                   style={{
                     color: 'var(--text-primary)',
                     fontFamily: 'SF Mono, Monaco, monospace',
