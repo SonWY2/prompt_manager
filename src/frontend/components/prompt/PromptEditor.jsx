@@ -388,7 +388,11 @@ const PromptEditor = ({ taskId, versionId }) => {
         >
           👁️ {isPreviewMode ? 'Edit Mode' : 'Preview'}
         </button>
-        <button className="btn btn-primary flex-1" onClick={handleSave}>
+        <button
+          className="btn btn-primary flex-1"
+          onClick={handleSave}
+          disabled={!taskId || !versionId}
+        >
           💾 Save
         </button>
       </div>
