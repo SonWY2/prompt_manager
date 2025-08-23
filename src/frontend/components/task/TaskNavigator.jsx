@@ -44,7 +44,7 @@ const TaskNavigator = ({ tasks, currentTask, onSelectTask }) => {
         <div className="flex items-center justify-between mb-4">
           <h2 className="panel-title">Tasks</h2>
           {isCreatingTask ? (
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 w-full">
               <input
                 type="text"
                 value={newTaskName}
@@ -54,8 +54,10 @@ const TaskNavigator = ({ tasks, currentTask, onSelectTask }) => {
                 autoFocus
                 onKeyPress={(e) => e.key === 'Enter' && handleNewTask()}
               />
-              <button className="btn btn-primary" onClick={handleNewTask}>Create</button>
-              <button className="btn btn-secondary" onClick={() => setIsCreatingTask(false)}>Cancel</button>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <button className="btn btn-primary" onClick={handleNewTask}>Create</button>
+                <button className="btn btn-secondary" onClick={() => setIsCreatingTask(false)}>Cancel</button>
+              </div>
             </div>
           ) : (
             <button
@@ -215,12 +217,9 @@ const TaskNavigator = ({ tasks, currentTask, onSelectTask }) => {
           <div className="text-center py-12">
             <div className="text-4xl mb-4">📝</div>
             <p className="text-muted mb-4">No tasks yet</p>
-            <button 
-              className="btn btn-primary"
-              onClick={handleNewTask}
-            >
+            <p className="text-muted">
               Create your first task
-            </button>
+            </p>
           </div>
         )}
       </div>
