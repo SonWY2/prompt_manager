@@ -17,11 +17,8 @@ const PromptEditor = ({ taskId, versionId }) => {
   const [taskName, setTaskName] = useState('');
   const [taskDescription, setTaskDescription] = useState('');
   const [variables, setVariables] = useState({});
+  const [activeTab, setActiveTab] = useState('prompt'); // 'prompt' or 'variables'
   const [isPreviewMode, setIsPreviewMode] = useState(false);
-  const [expandedSections, setExpandedSections] = useState({
-    variables: true,
-    system: false
-  });
   const [newVariable, setNewVariable] = useState({ name: '', value: '' });
   const [isEditingName, setIsEditingName] = useState(false);
 
@@ -93,13 +90,6 @@ const PromptEditor = ({ taskId, versionId }) => {
     });
   };
 
-  const toggleSection = (section) => {
-    setExpandedSections(prev => ({
-      ...prev,
-      [section]: !prev[section]
-    }));
-  };
-
   const renderPromptWithVariables = () => {
     let rendered = promptText;
     extractedVariables.forEach(variable => {
@@ -112,7 +102,7 @@ const PromptEditor = ({ taskId, versionId }) => {
   if (!currentTask) {
     return (
       <div className="flex items-center justify-center h-full">
-        <p className="text-muted">Please select a task</p>
+        <p className="text-muted">Select a task to start editing</p>
       </div>
     );
   }
@@ -120,27 +110,25 @@ const PromptEditor = ({ taskId, versionId }) => {
   const versions = currentTask.versions ? Object.entries(currentTask.versions) : [];
 
   return (
-    <>
+    <div className="h-full flex flex-col overflow-hidden">
       {/* Header */}
       <div className="panel-header">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
             {/* Task Name */}
             {isEditingName ? (
-              <div className="flex items-center gap-2">
-                <input
-                  type="text"
-                  value={taskName}
-                  onChange={(e) => setTaskName(e.target.value)}
-                  className="input text-lg font-semibold bg-transparent border-none p-0 focus:ring-0"
-                  onBlur={handleSaveName}
-                  onKeyPress={(e) => e.key === 'Enter' && handleSaveName()}
-                  autoFocus
-                />
-              </div>
+              <input
+                type="text"
+                value={taskName}
+                onChange={(e) => setTaskName(e.target.value)}
+                className="input text-lg font-semibold bg-transparent border-none p-0 focus:ring-0"
+                onBlur={handleSaveName}
+                onKeyPress={(e) => e.key === 'Enter' && handleSaveName()}
+                autoFocus
+              />
             ) : (
               <h2 
-                className="text-xl font-semibold cursor-pointer hover:opacity-75 transition-opacity"
+                className="text-lg font-medium cursor-pointer hover:opacity-75 transition-opacity"
                 style={{ color: 'var(--text-primary)' }}
                 onClick={() => setIsEditingName(true)}
                 title="Click to edit name"
@@ -149,9 +137,9 @@ const PromptEditor = ({ taskId, versionId }) => {
               </h2>
             )}
             
-            <div className="px-3 py-1 rounded-full text-xs font-medium"
+            <div className="px-2 py-1 rounded text-xs font-medium"
                  style={{ 
-                   background: 'rgba(34, 197, 94, 0.2)', 
+                   background: 'rgba(16, 185, 129, 0.2)', 
                    color: 'var(--accent-success)' 
                  }}>
               Active
@@ -159,16 +147,10 @@ const PromptEditor = ({ taskId, versionId }) => {
           </div>
           
           <div className="flex gap-2">
-            <button 
-              className="btn btn-secondary"
-              onClick={() => navigator.clipboard.writeText(promptText)}
-            >
+            <button className="btn btn-secondary" onClick={() => navigator.clipboard.writeText(promptText)}>
               📋 Copy
             </button>
-            <button 
-              className="btn btn-primary"
-              onClick={handleNewVersion}
-            >
+            <button className="btn btn-primary" onClick={handleNewVersion}>
               🌿 New Version
             </button>
           </div>
@@ -191,208 +173,225 @@ const PromptEditor = ({ taskId, versionId }) => {
             ))}
           </div>
         )}
+
+        {/* Tabs */}
+        <div className="tab-container mt-4">
+          <button 
+            className={`tab ${activeTab === 'prompt' ? 'active' : ''}`}
+            onClick={() => setActiveTab('prompt')}
+          >
+            Prompt
+          </button>
+          <button 
+            className={`tab ${activeTab === 'variables' ? 'active' : ''}`}
+            onClick={() => setActiveTab('variables')}
+          >
+            Variables ({extractedVariables.length})
+          </button>
+        </div>
       </div>
 
       {/* Content */}
-      <div className="space-y-4">
-        {/* Description Section */}
-        <div className="card">
-          <h3 className="text-sm font-medium mb-3 flex items-center gap-2">
-            📝 Prompt Description
-          </h3>
-          <textarea
-            value={taskDescription}
-            onChange={(e) => setTaskDescription(e.target.value)}
-            placeholder="Describe the purpose and usage of this prompt..."
-            className="w-full h-20 p-3 bg-transparent border rounded-md text-sm resize-y"
-            style={{ 
-              borderColor: 'var(--border-primary)',
-              color: 'var(--text-primary)'
-            }}
-          />
-        </div>
+      <div className="flex-1 overflow-y-auto p-4" style={{ height: 0 }}>
+        {activeTab === 'prompt' ? (
+          /* Prompt Tab */
+          <div className="space-y-4">
+            {/* Description */}
+            <div className="card">
+              <h3 className="text-sm font-medium mb-3 flex items-center gap-2">
+                📝 Prompt Description
+              </h3>
+              <textarea
+                value={taskDescription}
+                onChange={(e) => setTaskDescription(e.target.value)}
+                placeholder="Describe the purpose and usage of this prompt..."
+                className="w-full h-16 p-3 bg-transparent border rounded text-sm"
+                style={{ 
+                  borderColor: 'var(--border-primary)',
+                  color: 'var(--text-primary)'
+                }}
+              />
+            </div>
 
-        {/* System Prompt Section */}
-        <div className="card">
-          <div 
-            className="flex items-center justify-between cursor-pointer mb-3"
-            onClick={() => toggleSection('system')}
-          >
-            <h3 className="text-sm font-medium flex items-center gap-2">
-              🤖 System Prompt
-            </h3>
-            <span>{expandedSections.system ? '▲' : '▼'}</span>
+            {/* System Prompt */}
+            <div className="card">
+              <h3 className="text-sm font-medium mb-3 flex items-center gap-2">
+                🤖 System Prompt
+              </h3>
+              <textarea
+                value={systemPrompt}
+                onChange={(e) => setSystemPrompt(e.target.value)}
+                placeholder="Define AI role and instructions..."
+                className="w-full h-20 p-3 bg-transparent border rounded text-sm"
+                style={{ 
+                  borderColor: 'var(--border-primary)',
+                  color: 'var(--text-primary)'
+                }}
+              />
+            </div>
+
+            {/* Main Prompt */}
+            <div className="card">
+              <h3 className="text-sm font-medium mb-3 flex items-center gap-2">
+                💬 Main Prompt
+              </h3>
+              <textarea
+                value={promptText}
+                onChange={(e) => setPromptText(e.target.value)}
+                placeholder="Enter prompt... (Use {{variable_name}} for variables)"
+                className="w-full p-3 bg-transparent border-none text-sm font-mono"
+                style={{ 
+                  color: 'var(--text-primary)',
+                  fontFamily: 'SF Mono, Monaco, monospace',
+                  lineHeight: '1.5',
+                  height: '300px',
+                  minHeight: '300px',
+                  resize: 'none'
+                }}
+              />
+            </div>
+
+            {/* Preview */}
+            {isPreviewMode && (
+              <div className="card">
+                <h4 className="text-sm font-medium mb-3">Preview</h4>
+                
+                {systemPrompt && (
+                  <div className="mb-4 p-3 rounded border"
+                       style={{ 
+                         background: 'rgba(16, 185, 129, 0.1)',
+                         borderColor: 'var(--accent-success)'
+                       }}>
+                    <div className="text-xs mb-2" style={{ color: 'var(--accent-success)' }}>
+                      System:
+                    </div>
+                    <pre className="whitespace-pre-wrap text-sm" style={{ color: 'var(--text-secondary)' }}>
+                      {systemPrompt}
+                    </pre>
+                  </div>
+                )}
+                
+                <div className="p-3 rounded border" 
+                     style={{ 
+                       background: 'var(--bg-tertiary)',
+                       borderColor: 'var(--border-primary)'
+                     }}>
+                  <pre className="whitespace-pre-wrap text-sm font-mono" style={{ color: 'var(--text-secondary)' }}>
+                    {renderPromptWithVariables()}
+                  </pre>
+                </div>
+              </div>
+            )}
           </div>
-          
-          {expandedSections.system && (
-            <textarea
-              value={systemPrompt}
-              onChange={(e) => setSystemPrompt(e.target.value)}
-              placeholder="Enter system prompt... (Defines AI's role and instructions)"
-              className="w-full h-24 p-3 bg-transparent border rounded-md text-sm resize-y"
-              style={{ 
-                borderColor: 'var(--border-primary)',
-                color: 'var(--text-primary)'
-              }}
-            />
-          )}
-        </div>
-
-        {/* Main Prompt Section */}
-        <div className="card">
-          <h3 className="text-sm font-medium mb-3 flex items-center gap-2">
-            💬 Main Prompt
-          </h3>
-          <textarea
-            value={promptText}
-            onChange={(e) => setPromptText(e.target.value)}
-            placeholder="Enter prompt... (Use {{variable_name}} for variables)"
-            className="w-full p-4 bg-transparent border-none resize-none text-sm font-mono"
-            style={{ 
-              color: 'var(--text-primary)',
-              fontFamily: 'Courier New, monospace',
-              lineHeight: '1.6',
-              height: '300px',
-              minHeight: '300px',
-              resize: 'none'
-            }}
-          />
-        </div>
-
-        {/* Variables Section */}
-        <div className="card">
-          <div 
-            className="flex items-center justify-between cursor-pointer mb-3"
-            onClick={() => toggleSection('variables')}
-          >
-            <h3 className="text-sm font-medium flex items-center gap-2">
-              🔧 Template Variables
-              <span className="text-xs px-2 py-1 rounded bg-gray-700">
-                {extractedVariables.length}
-              </span>
-            </h3>
-            <span>{expandedSections.variables ? '▲' : '▼'}</span>
-          </div>
-          
-          {expandedSections.variables && (
-            <div className="space-y-4">
-              {/* Add Variable */}
-              <div className="grid grid-cols-3 gap-3">
+        ) : (
+          /* Variables Tab */
+          <div className="space-y-4">
+            {/* Add Variable */}
+            <div className="card">
+              <h3 className="text-sm font-medium mb-3">Add Variable</h3>
+              <div className="space-y-3">
                 <input
                   type="text"
                   value={newVariable.name}
                   onChange={(e) => setNewVariable(prev => ({ ...prev, name: e.target.value }))}
-                  className="input text-sm"
-                  placeholder="Variable Name"
+                  className="input text-sm w-full"
+                  placeholder="Variable Name (e.g., topic, tone, audience)"
                 />
-                <input
-                  type="text"
-                  value={newVariable.value}
-                  onChange={(e) => setNewVariable(prev => ({ ...prev, value: e.target.value }))}
-                  className="input text-sm"
-                  placeholder="Variable Value"
-                />
-                <button 
-                  className="btn btn-primary"
-                  onClick={handleAddVariable}
-                >
-                  Add
-                </button>
+                <div className="flex gap-2">
+                  <textarea
+                    value={newVariable.value}
+                    onChange={(e) => setNewVariable(prev => ({ ...prev, value: e.target.value }))}
+                    className="input text-sm flex-1"
+                    placeholder="Variable Value (supports multiline text, documents, etc.)"
+                    rows="3"
+                    style={{ resize: 'vertical', minHeight: '60px' }}
+                  />
+                  <button 
+                    className="btn btn-primary" 
+                    onClick={handleAddVariable}
+                    style={{ alignSelf: 'flex-start', minWidth: '60px' }}
+                  >
+                    Add
+                  </button>
+                </div>
               </div>
+            </div>
 
-              {/* Variable List */}
-              <div className="space-y-2">
-                {extractedVariables.length === 0 ? (
-                  <div className="text-center py-4" style={{ color: 'var(--text-muted)' }}>
-                    <p>No variables in prompt.</p>
-                    <p className="text-xs mt-1">Use <code>{'{{variable_name}}'}</code> to add a variable.</p>
-                  </div>
-                ) : (
-                  extractedVariables.map(variable => (
-                    <div key={variable} className="flex items-start gap-3 p-3 border rounded-lg"
-                         style={{ borderColor: 'var(--border-primary)' }}>
-                      <div className="flex-shrink-0 pt-1">
+            {/* Variable List */}
+            <div className="space-y-3">
+              {extractedVariables.length === 0 ? (
+                <div className="text-center py-8" style={{ color: 'var(--text-muted)' }}>
+                  <p>No variables in prompt.</p>
+                  <p className="text-xs mt-1">Use <code>{'{{'}variable_name{'}}'}</code> format in your prompt.</p>
+                </div>
+              ) : (
+                extractedVariables.map(variable => (
+                  <div key={variable} className="card">
+                    <div className="flex items-start gap-3">
+                      <div className="flex-shrink-0 pt-2">
                         <span className="variable-badge">{`{{${variable}}}`}</span>
                       </div>
-                      <textarea
-                        value={variables[variable] || ''}
-                        onChange={(e) => setVariables(prev => ({ ...prev, [variable]: e.target.value }))}
-                        className="flex-1 h-16 p-2 border rounded resize-y text-sm"
-                        style={{ 
-                          borderColor: 'var(--border-primary)',
-                          background: 'var(--bg-tertiary)',
-                          color: 'var(--text-primary)'
-                        }}
-                        placeholder={`Enter value for ${variable}...`}
-                      />
+                      <div className="flex-1">
+                        <label className="block text-xs mb-1" style={{ color: 'var(--text-muted)' }}>
+                          {variable}
+                        </label>
+                        <textarea
+                          value={variables[variable] || ''}
+                          onChange={(e) => setVariables(prev => ({ ...prev, [variable]: e.target.value }))}
+                          className="w-full p-2 border rounded text-sm"
+                          style={{ 
+                            borderColor: 'var(--border-primary)',
+                            background: 'var(--bg-tertiary)',
+                            color: 'var(--text-primary)',
+                            resize: 'vertical',
+                            minHeight: '80px'
+                          }}
+                          placeholder={`Enter value for ${variable}... (supports multiline text)`}
+                          rows="3"
+                        />
+                      </div>
                       <button
-                        className="flex-shrink-0 text-xs px-2 py-1 rounded hover:bg-red-600 transition-colors"
-                        style={{ color: 'var(--accent-danger)' }}
+                        className="flex-shrink-0 text-xs px-2 py-1 rounded transition-colors"
+                        style={{ 
+                          color: 'var(--accent-danger)',
+                          background: 'transparent',
+                          border: '1px solid var(--accent-danger)',
+                          marginTop: '20px'
+                        }}
                         onClick={() => handleRemoveVariable(variable)}
+                        onMouseEnter={(e) => {
+                          e.target.style.background = 'var(--accent-danger)';
+                          e.target.style.color = 'white';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.target.style.background = 'transparent';
+                          e.target.style.color = 'var(--accent-danger)';
+                        }}
                       >
                         Delete
                       </button>
                     </div>
-                  ))
-                )}
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Action Buttons */}
-        <div className="flex gap-4">
-          <button 
-            className="btn btn-secondary flex-1"
-            onClick={() => setIsPreviewMode(!isPreviewMode)}
-          >
-            👁️ {isPreviewMode ? 'Editor Mode' : 'Preview'}
-          </button>
-          <button 
-            className="btn btn-primary flex-1"
-            onClick={handleSave}
-          >
-            💾 Save
-          </button>
-        </div>
-
-        {/* Preview */}
-        {isPreviewMode && (
-          <div className="card">
-            <h4 className="text-sm font-medium mb-3" style={{ color: 'var(--text-primary)' }}>
-              Preview
-            </h4>
-            
-            {systemPrompt && (
-              <div className="mb-4 p-3 rounded border"
-                   style={{ 
-                     background: 'rgba(34, 197, 94, 0.1)',
-                     borderColor: 'var(--accent-success)'
-                   }}>
-                <div className="text-xs mb-2" style={{ color: 'var(--accent-success)' }}>
-                  System Prompt:
-                </div>
-                <pre className="whitespace-pre-wrap text-sm"
-                     style={{ color: 'var(--text-secondary)' }}>
-                  {systemPrompt}
-                </pre>
-              </div>
-            )}
-            
-            <div className="p-4 rounded border" 
-                 style={{ 
-                   background: 'rgba(15, 23, 42, 0.8)',
-                   borderColor: 'var(--border-secondary)'
-                 }}>
-              <pre className="whitespace-pre-wrap text-sm font-mono"
-                   style={{ color: 'var(--text-secondary)' }}>
-                {renderPromptWithVariables()}
-              </pre>
+                  </div>
+                ))
+              )}
             </div>
           </div>
         )}
       </div>
-    </>
+
+      {/* Bottom Actions */}
+      <div className="flex gap-2 p-4 border-t" style={{ borderColor: 'var(--border-primary)' }}>
+        <button 
+          className="btn btn-secondary flex-1"
+          onClick={() => setIsPreviewMode(!isPreviewMode)}
+        >
+          👁️ {isPreviewMode ? 'Edit Mode' : 'Preview'}
+        </button>
+        <button className="btn btn-primary flex-1" onClick={handleSave}>
+          💾 Save
+        </button>
+      </div>
+    </div>
   );
 };
 

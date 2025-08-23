@@ -117,15 +117,31 @@ const TaskNavigator = ({ tasks, currentTask, onSelectTask }) => {
             <div key={folderId} className="mb-6">
               {/* Folder Header */}
               <button
-                className="flex items-center justify-between w-full p-2 hover:bg-gray-800/30 rounded-md transition-colors"
+                className="folder-header"
                 onClick={() => toggleFolder(folderId)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  width: '100%',
+                  padding: '8px',
+                  background: 'transparent',
+                  border: 'none',
+                  borderRadius: '3px',
+                  color: 'var(--text-muted)',
+                  fontSize: '11px',
+                  cursor: 'pointer',
+                  transition: 'background-color 0.15s ease'
+                }}
+                onMouseEnter={(e) => e.target.style.background = 'var(--bg-hover)'}
+                onMouseLeave={(e) => e.target.style.background = 'transparent'}
               >
-                <div className="flex items-center gap-2 text-sm" style={{ color: 'var(--text-dim)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <span>{isExpanded ? '▼' : '▶'}</span>
                   <span>{folder.icon}</span>
                   <span>{folder.name}</span>
                 </div>
-                <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                <span style={{ fontSize: '10px', color: 'var(--text-dim)' }}>
                   {taskCount}
                 </span>
               </button>
@@ -140,12 +156,30 @@ const TaskNavigator = ({ tasks, currentTask, onSelectTask }) => {
                     return (
                       <div
                         key={task.id}
-                        className={`relative p-3 ml-6 rounded-lg cursor-pointer transition-all ${
-                          isActive 
-                            ? 'bg-indigo-500/15 border-l-4 border-indigo-500' 
-                            : 'hover:bg-gray-800/30'
-                        }`}
+                        className="task-item"
+                        style={{
+                          position: 'relative',
+                          padding: '10px 12px',
+                          marginLeft: '24px',
+                          marginBottom: '2px',
+                          borderRadius: '3px',
+                          cursor: 'pointer',
+                          transition: 'all 0.15s ease',
+                          background: isActive ? 'var(--accent-primary)' : 'transparent',
+                          color: isActive ? 'white' : 'var(--text-primary)',
+                          border: isActive ? '1px solid var(--accent-primary)' : '1px solid transparent'
+                        }}
                         onClick={() => onSelectTask(task.id)}
+                        onMouseEnter={(e) => {
+                          if (!isActive) {
+                            e.target.style.background = 'var(--bg-hover)';
+                          }
+                        }}
+                        onMouseLeave={(e) => {
+                          if (!isActive) {
+                            e.target.style.background = 'transparent';
+                          }
+                        }}
                       >
                         <div className="flex items-start justify-between">
                           <div className="flex-1 min-w-0">
@@ -166,11 +200,23 @@ const TaskNavigator = ({ tasks, currentTask, onSelectTask }) => {
                           
                           {/* Favorite Star */}
                           <button 
-                            className="text-sm opacity-70 hover:opacity-100"
+                            style={{
+                              background: 'transparent',
+                              border: 'none',
+                              color: 'var(--text-muted)',
+                              fontSize: '12px',
+                              cursor: 'pointer',
+                              padding: '2px',
+                              borderRadius: '2px',
+                              opacity: '0.7',
+                              transition: 'opacity 0.15s ease'
+                            }}
                             onClick={(e) => {
                               e.stopPropagation();
                               // TODO: Toggle favorite
                             }}
+                            onMouseEnter={(e) => e.target.style.opacity = '1'}
+                            onMouseLeave={(e) => e.target.style.opacity = '0.7'}
                           >
                             ⭐
                           </button>
