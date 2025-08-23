@@ -43,23 +43,7 @@ const TaskNavigator = ({ tasks, currentTask, onSelectTask }) => {
       <div className="panel-header">
         <div className="flex items-center justify-between mb-4">
           <h2 className="panel-title">Tasks</h2>
-          {isCreatingTask ? (
-            <div className="flex items-center gap-2 w-full">
-              <input
-                type="text"
-                value={newTaskName}
-                onChange={(e) => setNewTaskName(e.target.value)}
-                placeholder="Enter a task name..."
-                className="input text-sm flex-1 min-w-0"
-                autoFocus
-                onKeyPress={(e) => e.key === 'Enter' && handleNewTask()}
-              />
-              <div className="flex items-center gap-2 flex-shrink-0">
-                <button className="btn btn-primary" onClick={handleNewTask}>Create</button>
-                <button className="btn btn-secondary" onClick={() => setIsCreatingTask(false)}>Cancel</button>
-              </div>
-            </div>
-          ) : (
+          {!isCreatingTask && (
             <button
               className="btn btn-primary"
               onClick={() => setIsCreatingTask(true)}
@@ -68,6 +52,23 @@ const TaskNavigator = ({ tasks, currentTask, onSelectTask }) => {
             </button>
           )}
         </div>
+        {isCreatingTask && (
+          <div className="flex items-center gap-2 w-full mb-4">
+            <input
+              type="text"
+              value={newTaskName}
+              onChange={(e) => setNewTaskName(e.target.value)}
+              placeholder="Enter a task name..."
+              className="input text-sm flex-1 min-w-0"
+              autoFocus
+              onKeyPress={(e) => e.key === 'Enter' && handleNewTask()}
+            />
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <button className="btn btn-primary" onClick={handleNewTask}>Create</button>
+              <button className="btn btn-secondary" onClick={() => setIsCreatingTask(false)}>Cancel</button>
+            </div>
+          </div>
+        )}
 
         {/* Tabs */}
         <div className="tab-container">
