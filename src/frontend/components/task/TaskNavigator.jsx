@@ -102,7 +102,7 @@ const TaskNavigator = ({ tasks, currentTask, onSelectTask }) => {
             return (
               <div
                 key={task.id}
-                className="task-item flex items-center justify-between"
+                className="task-item group flex items-center justify-between"
                 style={{
                   position: 'relative',
                   padding: '10px 12px',
@@ -143,69 +143,41 @@ const TaskNavigator = ({ tasks, currentTask, onSelectTask }) => {
                 </div>
 
                 <div className="flex items-center ml-2">
-                    {showTaskDeleteConfirm === task.id ? (
-                    <div className="flex items-center bg-red-100 dark:bg-red-900 rounded px-1">
-                        <button
-                        className="text-xs text-red-600 dark:text-red-300 px-1"
-                        onClick={async (e) => {
-                            e.stopPropagation();
-                            try {
-                            await deleteTask(task.id);
-                            setShowTaskDeleteConfirm(null);
-                            } catch (error) {
-                            console.error('태스크 삭제 오류:', error);
-                            alert('태스크 삭제 중 오류가 발생했습니다: ' + error.message);
-                            }
-                        }}
-                        >
-                        확인
-                        </button>
-                        <button
-                        className="text-xs text-gray-600 dark:text-gray-300 px-1 ml-1"
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            setShowTaskDeleteConfirm(null);
-                        }}
-                        >
-                        취소
-                        </button>
-                    </div>
-                    ) : (
-                    <button
-                        className="text-gray-500 hover:text-red-500 rounded p-1 opacity-0 group-hover:opacity-100"
-                        onClick={(e) => {
+                  <button
+                      className="text-gray-500 hover:text-red-500 rounded p-1 opacity-0 group-hover:opacity-100"
+                      onClick={(e) => {
                         e.stopPropagation();
-                        setShowTaskDeleteConfirm(task.id);
-                        }}
-                        title="태스크 삭제"
-                    >
-                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                        </svg>
-                    </button>
-                    )}
-
-                    <button
-                        style={{
-                        background: 'transparent',
-                        border: 'none',
-                        color: 'var(--text-muted)',
-                        fontSize: '12px',
-                        cursor: 'pointer',
-                        padding: '2px',
-                        borderRadius: '2px',
-                        opacity: '0.7',
-                        transition: 'opacity 0.15s ease'
-                        }}
-                        onClick={(e) => {
-                        e.stopPropagation();
-                        // TODO: Toggle favorite
-                        }}
-                        onMouseEnter={(e) => e.target.style.opacity = '1'}
-                        onMouseLeave={(e) => e.target.style.opacity = '0.7'}
-                    >
-                        ⭐
-                    </button>
+                        if (window.confirm(`'${task.name}' 태스크를 정말 삭제하시겠습니까?`)) {
+                          deleteTask(task.id);
+                        }
+                      }}
+                      title="태스크 삭제"
+                  >
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                  </button>
+                  <button
+                      style={{
+                      background: 'transparent',
+                      border: 'none',
+                      color: 'var(--text-muted)',
+                      fontSize: '12px',
+                      cursor: 'pointer',
+                      padding: '2px',
+                      borderRadius: '2px',
+                      opacity: '0.7',
+                      transition: 'opacity 0.15s ease'
+                      }}
+                      onClick={(e) => {
+                      e.stopPropagation();
+                      // TODO: Toggle favorite
+                      }}
+                      onMouseEnter={(e) => e.target.style.opacity = '1'}
+                      onMouseLeave={(e) => e.target.style.opacity = '0.7'}
+                  >
+                      ⭐
+                  </button>
                 </div>
               </div>
             );

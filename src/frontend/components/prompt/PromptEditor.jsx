@@ -72,7 +72,7 @@ const PromptEditor = ({ taskId, versionId }) => {
     try {
       const versionName = prompt('새 버전 이름을 입력하세요:');
       if (versionName) {
-        await createVersion(taskId, versionName, promptText, systemPrompt, taskDescription);
+        await createVersion(taskId, versionName, promptText, systemPrompt, taskDescription, variables);
       }
     } catch (error) {
       console.error('버전 생성 실패:', error);
@@ -162,10 +162,13 @@ const PromptEditor = ({ taskId, versionId }) => {
           <div className="version-timeline">
             <div className="timeline-line"></div>
             {currentTask.versions.map((version, index) => (
-              <div key={version.id} className="timeline-item">
+              <div
+                key={version.id}
+                className="timeline-item"
+                onClick={() => setCurrentVersion(version.id)}
+              >
                 <div 
                   className={`timeline-dot ${currentVersion === version.id ? 'active' : ''}`}
-                  onClick={() => setCurrentVersion(version.id)}
                 />
                 <div className={`timeline-label ${currentVersion === version.id ? 'active' : ''}`}>
                   {version.name || `v${index + 1}`}

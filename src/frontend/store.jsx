@@ -441,7 +441,8 @@ export const PromptProvider = ({ children }) => {
   // 버전 관리
   const versionsLoadingRef = useRef(new Set()); // useRef로 변경
   
-  const loadVersions = useCallback(async (taskId) => {
+  const loadVersions = useCallback(async (taskId, options = {}) => {
+    const { versionToSelect = null } = options;
     if (versionsLoadingRef.current.has(taskId)) {
       return;
     }
@@ -462,11 +463,9 @@ export const PromptProvider = ({ children }) => {
       setVersions(serverVersions); // Keep this for other components that might use it directly
 
       if (serverVersions.length > 0) {
-        // Don't select a version by default
-        setCurrentVersion(null);
+        setCurrentVersion(versionToSelect);
         setCurrentSystemPrompt('You are a helpful assistant.');
         setIsEditMode(false);
-        // We can still load variables for the task
         loadTemplateVariables(taskId);
       } else {
         setCurrentVersion(null);
@@ -484,7 +483,7 @@ export const PromptProvider = ({ children }) => {
     }
   }, [loadTemplateVariables]);
   
-  const createVersion = useCallback(async (taskId, name, content, systemPrompt, description) => {
+  const createVersion = useCallback(async (taskId, name, content, systemPrompt, description, variables) => {
     try {
       const versionId = `v${Date.now()}`;
       const newVersion = {
@@ -493,6 +492,7 @@ export const PromptProvider = ({ children }) => {
         content,
         system_prompt: systemPrompt,
         description,
+        variables,
       };
 
       const response = await fetch(apiUrl(`/api/tasks/${taskId}/versions`), {
@@ -538,7 +538,8 @@ export const PromptProvider = ({ children }) => {
       }
 
       // After a successful update, refetch the versions to ensure UI is in sync
-      loadVersions(taskId);
+      // Pass the current versionId to stay on the same version view
+      loadVersions(taskId, { versionToSelect: versionId });
 
     } catch (error) {
       console.error('Error updating version:', error);

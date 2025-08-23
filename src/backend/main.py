@@ -45,6 +45,7 @@ class Version(BaseModel):
     content: str
     system_prompt: str
     description: Optional[str] = None
+    variables: Dict[str, Any] = {}
     createdAt: str
     results: List[Any] = []
     updatedAt: Optional[str] = None
@@ -64,12 +65,16 @@ class VersionCreate(BaseModel):
     description: Optional[str] = None
     name: str
     system_prompt: Optional[str] = None
+    variables: Optional[Dict[str, Any]] = None
+
+from typing import Dict, Any
 
 class VersionUpdate(BaseModel):
     content: Optional[str] = None
     name: Optional[str] = None
     description: Optional[str] = None
     system_prompt: Optional[str] = None
+    variables: Optional[Dict[str, Any]] = None
 
 class LLMCall(BaseModel):
     taskId: str
@@ -171,6 +176,7 @@ def create_version(task_id: str, version: VersionCreate):
         "system_prompt": version.system_prompt or "You are a helpful assistant.",
         "description": version.description,
         "name": display_name,
+        "variables": version.variables or {},
         "createdAt": datetime.datetime.now().isoformat(),
         "results": []
     }
