@@ -148,7 +148,7 @@ const TaskNavigator = ({ tasks, currentTask, onSelectTask }) => {
       {/* Footer */}
       <div className="p-4 border-t" style={{ borderColor: 'var(--border-primary)' }}>
         <div className="flex gap-2">
-          <button className="btn btn-secondary w-full" onClick={handleNewTask}>
+          <button className="btn btn-primary w-full" onClick={handleNewTask}>
             + New Task
           </button>
           <button
