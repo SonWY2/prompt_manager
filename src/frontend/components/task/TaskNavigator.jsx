@@ -50,7 +50,7 @@ const TaskNavigator = ({ tasks, currentTask, onSelectTask }) => {
                 value={newTaskName}
                 onChange={(e) => setNewTaskName(e.target.value)}
                 placeholder="Enter a task name..."
-                className="input text-sm flex-1"
+                className="input text-sm flex-1 min-w-0"
                 autoFocus
                 onKeyPress={(e) => e.key === 'Enter' && handleNewTask()}
               />
