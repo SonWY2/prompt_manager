@@ -1085,6 +1085,17 @@ export const PromptProvider = ({ children }) => {
       throw error;
     }
   }, [currentVersion, versions, loadVersions, apiUrl]);
+
+  const initiateNewVersion = useCallback((taskId) => {
+    if (!taskId) {
+      console.error("Cannot initiate new version without a task ID.");
+      return;
+    }
+    console.log(`Initiating new version for task: ${taskId}`);
+    // By setting the version to a special string and forcing edit mode,
+    // we can let the PromptEditor know that it should create a new version on save.
+    selectVersion('new-version', true);
+  }, [selectVersion]);
   
   const updateVariables = useCallback(async (taskId, variables) => {
     try {
@@ -1344,6 +1355,7 @@ export const PromptProvider = ({ children }) => {
       updateSystemPromptContent, // System Prompt 업데이트 함수 추가
       savePromptContent,
       deleteVersion,
+      initiateNewVersion, // Add this line
       getVersionDetail,
       loadTemplateVariables,
       updateVariables,

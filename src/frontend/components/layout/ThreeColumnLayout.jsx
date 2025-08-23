@@ -1,48 +1,42 @@
-import React, { useState } from 'react';
-import ResponsivePanel from './ResponsivePanel.jsx';
+// src/frontend/components/layout/ThreeColumnLayout.jsx
+import React from 'react';
 
-// 3단 레이아웃 컴포넌트
-function ThreeColumnLayout({ 
+const ThreeColumnLayout = ({ 
   leftPanel, 
   centerPanel, 
-  rightPanel, 
-  leftPanelWidth = 20, 
-  rightPanelWidth = 30 
-}) {
-  const [leftWidth, setLeftWidth] = useState(leftPanelWidth);
-  const [rightWidth, setRightWidth] = useState(rightPanelWidth);
-  
+  rightPanel 
+}) => {
   return (
-    <div className="flex flex-1 h-full overflow-hidden">
-      {/* 왼쪽 패널 - 태스크 네비게이터 */}
-      <ResponsivePanel 
-        width={leftWidth} 
-        onResize={setLeftWidth}
-        minWidth={15}
-        maxWidth={30}
-        className="bg-gray-100 dark:bg-gray-800 border-r border-gray-300 dark:border-gray-700"
+    <div className="flex h-full">
+      {/* Left Panel - Fixed 320px */}
+      <div 
+        className="panel flex-shrink-0"
+        style={{ width: '320px', minWidth: '320px', maxWidth: '320px' }}
       >
         {leftPanel}
-      </ResponsivePanel>
+      </div>
       
-      {/* 중앙 패널 - 프롬프트 에디터 */}
-      <div className="flex-1 flex flex-col overflow-hidden bg-white dark:bg-gray-900">
+      {/* Center Panel - Fixed calculated width */}
+      <div 
+        className="panel flex-shrink-0"
+        style={{ 
+          width: 'calc(100vw - 320px - 400px)', 
+          minWidth: 'calc(100vw - 320px - 400px)',
+          maxWidth: 'calc(100vw - 320px - 400px)'
+        }}
+      >
         {centerPanel}
       </div>
       
-      {/* 오른쪽 패널 - 결과 뷰어 */}
-      <ResponsivePanel 
-        width={rightWidth} 
-        onResize={setRightWidth}
-        minWidth={20}
-        maxWidth={50}
-        resizeFrom="left"
-        className="bg-gray-50 dark:bg-gray-800 border-l border-gray-300 dark:border-gray-700"
+      {/* Right Panel - Fixed 400px */}
+      <div 
+        className="panel flex-shrink-0"
+        style={{ width: '400px', minWidth: '400px', maxWidth: '400px' }}
       >
         {rightPanel}
-      </ResponsivePanel>
+      </div>
     </div>
   );
-}
+};
 
 export default ThreeColumnLayout;
