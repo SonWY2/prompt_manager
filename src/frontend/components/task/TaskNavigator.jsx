@@ -5,70 +5,56 @@ import { useStore } from '../../store.jsx';
 const TaskNavigator = ({ tasks, currentTask, onSelectTask }) => {
   const { createTask, deleteTask } = useStore();
   const [activeTab, setActiveTab] = useState('all'); // all, recent, favorites
-  const [showTaskDeleteConfirm, setShowTaskDeleteConfirm] = useState(null);
-
-  const [isCreatingTask, setIsCreatingTask] = useState(false);
-  const [newTaskName, setNewTaskName] = useState('');
 
   const handleNewTask = async () => {
-    if (!newTaskName.trim()) return;
-    try {
-      await createTask(newTaskName.trim());
-      setNewTaskName('');
-      setIsCreatingTask(false);
-    } catch (error) {
-      console.error('태스크 생성 실패:', error);
-      alert('태스크 생성에 실패했습니다.');
+    const taskName = prompt("Enter a name for the new task:");
+    if (taskName && taskName.trim()) {
+      try {
+        await createTask(taskName.trim());
+      } catch (error) {
+        console.error('Failed to create task:', error);
+        alert('Failed to create task.');
+      }
+    }
+  };
+
+  const handleDeleteTask = async () => {
+    if (!currentTask) {
+      alert("Please select a task to delete.");
+      return;
+    }
+    const taskToDelete = tasks[currentTask];
+    if (window.confirm(`Are you sure you want to delete the task "${taskToDelete.name}"?`)) {
+      try {
+        await deleteTask(currentTask);
+      } catch (error) {
+        console.error('Failed to delete task:', error);
+        alert('Failed to delete task.');
+      }
     }
   };
 
   const formatTimeAgo = (updatedAt) => {
-    if (!updatedAt) return '알 수 없음';
+    if (!updatedAt) return 'Unknown';
     const now = new Date();
     const updated = new Date(updatedAt);
     const diffInHours = Math.floor((now - updated) / (1000 * 60 * 60));
     
-    if (diffInHours < 1) return '방금 전';
-    if (diffInHours < 24) return `${diffInHours}시간 전`;
-    if (diffInHours < 48) return '어제';
-    if (diffInHours < 72) return '2일 전';
-    return '3일 전';
+    if (diffInHours < 1) return 'Just now';
+    if (diffInHours < 24) return `${diffInHours}h ago`;
+    if (diffInHours < 48) return 'Yesterday';
+    return `${Math.floor(diffInHours / 24)} days ago`;
   };
 
   const taskList = useMemo(() => Object.values(tasks), [tasks]);
 
   return (
-    <>
+    <div className="h-full flex flex-col" style={{ background: 'var(--bg-secondary)' }}>
       {/* Header */}
       <div className="panel-header">
         <div className="flex items-center justify-between mb-4">
           <h2 className="panel-title">Tasks</h2>
-          {!isCreatingTask && (
-            <button
-              className="btn btn-primary"
-              onClick={() => setIsCreatingTask(true)}
-            >
-              + New Task
-            </button>
-          )}
         </div>
-        {isCreatingTask && (
-          <div className="flex items-center gap-2 w-full mb-4">
-            <input
-              type="text"
-              value={newTaskName}
-              onChange={(e) => setNewTaskName(e.target.value)}
-              placeholder="Enter a task name..."
-              className="input text-sm flex-1 min-w-0"
-              autoFocus
-              onKeyPress={(e) => e.key === 'Enter' && handleNewTask()}
-            />
-            <div className="flex items-center gap-2 flex-shrink-0">
-              <button className="btn btn-primary" onClick={handleNewTask}>Create</button>
-              <button className="btn btn-secondary" onClick={() => setIsCreatingTask(false)}>Cancel</button>
-            </div>
-          </div>
-        )}
 
         {/* Tabs */}
         <div className="tab-container">
@@ -94,7 +80,7 @@ const TaskNavigator = ({ tasks, currentTask, onSelectTask }) => {
       </div>
 
       {/* Task List */}
-      <div className="p-5">
+      <div className="flex-1 overflow-y-auto p-5">
         <div className="space-y-1">
           {taskList.map(task => {
             const isActive = currentTask === task.id;
@@ -139,46 +125,8 @@ const TaskNavigator = ({ tasks, currentTask, onSelectTask }) => {
                     </span>
                   </div>
                   <div className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                    {versionCount}개 버전 • 수정 {formatTimeAgo(task.updatedAt)}
+                    {versionCount} versions • Modified {formatTimeAgo(task.updatedAt)}
                   </div>
-                </div>
-
-                <div className="flex items-center ml-2">
-                  <button
-                      className="text-gray-500 hover:text-red-500 rounded p-1 opacity-0 group-hover:opacity-100"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (window.confirm(`'${task.name}' 태스크를 정말 삭제하시겠습니까?`)) {
-                          deleteTask(task.id);
-                        }
-                      }}
-                      title="태스크 삭제"
-                  >
-                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                      </svg>
-                  </button>
-                  <button
-                      style={{
-                      background: 'transparent',
-                      border: 'none',
-                      color: 'var(--text-muted)',
-                      fontSize: '12px',
-                      cursor: 'pointer',
-                      padding: '2px',
-                      borderRadius: '2px',
-                      opacity: '0.7',
-                      transition: 'opacity 0.15s ease'
-                      }}
-                      onClick={(e) => {
-                      e.stopPropagation();
-                      // TODO: Toggle favorite
-                      }}
-                      onMouseEnter={(e) => e.target.style.opacity = '1'}
-                      onMouseLeave={(e) => e.target.style.opacity = '0.7'}
-                  >
-                      ⭐
-                  </button>
                 </div>
               </div>
             );
@@ -196,7 +144,23 @@ const TaskNavigator = ({ tasks, currentTask, onSelectTask }) => {
           </div>
         )}
       </div>
-    </>
+
+      {/* Footer */}
+      <div className="p-4 border-t" style={{ borderColor: 'var(--border-primary)' }}>
+        <div className="flex gap-2">
+          <button className="btn btn-secondary w-full" onClick={handleNewTask}>
+            + New Task
+          </button>
+          <button
+            className="btn btn-danger w-full"
+            onClick={handleDeleteTask}
+            disabled={!currentTask}
+          >
+            Delete Task
+          </button>
+        </div>
+      </div>
+    </div>
   );
 };
 
