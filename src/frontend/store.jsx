@@ -7,25 +7,7 @@ const PromptContext = createContext();
 export const useStore = () => useContext(PromptContext);
 
 export const PromptProvider = ({ children }) => {
-  // localStorage에서 초기값 동기적으로 로드
-  const getInitialGroups = () => {
-    try {
-      const savedGroups = localStorage.getItem('availableGroups');
-      console.log('getInitialGroups - localStorage에서 가져온 데이터:', savedGroups);
-      if (savedGroups) {
-        const parsed = JSON.parse(savedGroups);
-        console.log('getInitialGroups - 파싱된 그룹 데이터:', parsed);
-        return parsed;
-      }
-    } catch (error) {
-      console.error('Error loading groups from localStorage:', error);
-    }
-    const defaultGroups = ['기본 그룹', '마케팅', '고객 지원', '제품 개발', '기술 문서'];
-    console.log('getInitialGroups - 기본 그룹 사용:', defaultGroups);
-    return defaultGroups;
-  };
-  
-  const getInitialTasks = () => {
+const getInitialTasks = () => {
     try {
       const savedTasks = localStorage.getItem('tasks');
       if (savedTasks) {
@@ -52,7 +34,6 @@ export const PromptProvider = ({ children }) => {
   const [templateVariables, setTemplateVariables] = useState({});
   const [llmResults, setLLMResults] = useState([]);
   const [isDarkMode, setIsDarkMode] = useState(false);
-  const [availableGroups, setAvailableGroups] = useState(getInitialGroups);
   const [serverStatus, setServerStatus] = useState('disconnected'); // 서버 상태 추가
   
   // LLM Endpoints 상태 추가
@@ -363,28 +344,17 @@ export const PromptProvider = ({ children }) => {
     }
   }, []);
   
-  const createTask = useCallback(async (name, group = '기본 그룹') => {
+  const createTask = useCallback(async (name) => {
     try {
       const taskId = `task-${Date.now()}`;
-      console.log('태스크 생성 시작:', { taskId, name, group });
-      
-      // 새로운 그룹이면 availableGroups에 추가
-      setAvailableGroups(prevGroups => {
-        if (!prevGroups.includes(group)) {
-          console.log('새로운 그룹 추가:', group);
-          const newGroups = [...prevGroups, group];
-          localStorage.setItem('availableGroups', JSON.stringify(newGroups));
-          return newGroups;
-        }
-        return prevGroups;
-      });
+      console.log('태스크 생성 시작:', { taskId, name });
       
       try {
         // API 호출 시도
         const response = await fetch(apiUrl('/api/tasks'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ taskId, name, group })
+          body: JSON.stringify({ taskId, name })
         });
         
         if (!response.ok) {
@@ -401,7 +371,7 @@ export const PromptProvider = ({ children }) => {
       setTasks(prevTasks => {
         const newTasks = {
           ...prevTasks,
-          [taskId]: { id: taskId, name, group, versions: [] }
+          [taskId]: { id: taskId, name, versions: [] }
         };
         
         console.log('로컬 상태 업데이트 완료:', newTasks);
@@ -1198,107 +1168,6 @@ export const PromptProvider = ({ children }) => {
     }
   }, []);
   
-  // 그룹 추가 기능
-  const addGroup = useCallback(async (groupName) => {
-    try {
-      if (!groupName || !groupName.trim()) {
-        throw new Error('그룹 이름이 비어있습니다.');
-      }
-      
-      const trimmedName = groupName.trim();
-      
-      // 함수형 업데이트로 최신 상태 참조
-      return new Promise((resolve, reject) => {
-        setAvailableGroups(prevGroups => {
-          // 중복 체크
-          if (prevGroups.includes(trimmedName)) {
-            reject(new Error('이미 존재하는 그룹 이름입니다.'));
-            return prevGroups; // 기존 상태 유지
-          }
-          
-          // 새 그룹 추가
-          const newGroups = [...prevGroups, trimmedName];
-          
-          // 로컬 스토리지에 저장
-          localStorage.setItem('availableGroups', JSON.stringify(newGroups));
-          
-          // 성공 알림
-          resolve({ success: true, message: `'${trimmedName}' 그룹이 추가되었습니다.` });
-          
-          return newGroups;
-        });
-      });
-      
-    } catch (error) {
-      console.error('Error adding group:', error);
-      throw error;
-    }
-  }, []);
-  
-  // 그룹 삭제 기능
-  const deleteGroup = useCallback(async (groupName) => {
-    try {
-      console.log('=== 그룹 삭제 시작 ===');
-      console.log('삭제할 그룹:', groupName);
-      console.log('삭제 전 availableGroups:', availableGroups);
-      
-      // 해당 그룹에 속한 태스크 확인
-      const tasksInGroup = Object.entries(tasks).filter(([_, task]) => task.group === groupName);
-      console.log('그룹에 속한 태스크 수:', tasksInGroup.length);
-      
-      // 그룹에 속한 태스크들을 기본 그룹으로 이동
-      if (tasksInGroup.length > 0) {
-        const updatedTasks = { ...tasks };
-        tasksInGroup.forEach(([taskId, task]) => {
-          updatedTasks[taskId] = { ...task, group: '기본 그룹' };
-        });
-        setTasks(updatedTasks);
-        localStorage.setItem('tasks', JSON.stringify(updatedTasks));
-        console.log('태스크들을 기본 그룹으로 이동 완료');
-      }
-      
-      // availableGroups에서 즉시 삭제
-      setAvailableGroups(prevGroups => {
-        const newGroups = prevGroups.filter(group => group !== groupName);
-        console.log('새로운 그룹 목록:', newGroups);
-        
-        // 로컬 스토리지에 즉시 저장
-        localStorage.setItem('availableGroups', JSON.stringify(newGroups));
-        
-        return newGroups;
-      });
-      
-      // 서버 API 호출
-      try {
-        const response = await fetch(apiUrl('/api/groups/' + encodeURIComponent(groupName)), {
-          method: 'DELETE'
-        });
-        
-        if (response.ok) {
-          const data = await response.json();
-          console.log('서버 그룹 삭제 성공:', data);
-        } else {
-          console.warn('서버 그룹 삭제 실패:', response.status, response.statusText);
-        }
-      } catch (apiError) {
-        console.warn('API 서버에 연결할 수 없습니다. 로컬에만 저장합니다.', apiError);
-      }
-      
-      console.log('=== 그룹 삭제 완료 ===');
-      return { success: true, message: `'${groupName}' 그룹이 삭제되었습니다.` };
-    } catch (error) {
-      console.error('Error deleting group:', error);
-      
-      // 에러가 발생해도 강제로 삭제 시도
-      setAvailableGroups(prevGroups => {
-        const newGroups = prevGroups.filter(group => group !== groupName);
-        localStorage.setItem('availableGroups', JSON.stringify(newGroups));
-        return newGroups;
-      });
-      
-      return { success: false, message: `오류가 발생했지만 '${groupName}' 그룹이 삭제되었습니다.` };
-    }
-  }, [tasks, availableGroups]);
   
   // 테마 설정
   const toggleDarkMode = useCallback(() => {
@@ -1321,9 +1190,7 @@ export const PromptProvider = ({ children }) => {
       templateVariables,
       llmResults,
       isDarkMode,
-      availableGroups,
       serverStatus, // 서버 상태 추가
-      setAvailableGroups,
       
       // LLM Endpoints 상태 추가
       llmEndpoints,
@@ -1365,8 +1232,6 @@ export const PromptProvider = ({ children }) => {
       getVersionResults,
       compareVersions,
       toggleDarkMode,
-      deleteGroup,
-      addGroup,
       
       // LLM Endpoints 관리 함수 추가
       loadLlmEndpoints,

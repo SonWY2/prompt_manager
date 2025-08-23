@@ -167,17 +167,15 @@ app.get('/api/tasks', (req, res) => {
     tasks: Object.entries(promptData.tasks).map(([id, task]) => ({
       id,
       name: task.name,
-      group: task.group || '기본 그룹',
       versions: task.versions || []
     }))
   });
 });
 
 app.post('/api/tasks', (req, res) => {
-  const { taskId, name, group } = req.body;
+  const { taskId, name } = req.body;
   promptData.tasks[taskId] = { 
     name, 
-    group: group || '기본 그룹', 
     versions: [] 
   };
   saveData();
@@ -186,7 +184,6 @@ app.post('/api/tasks', (req, res) => {
     task: {
       id: taskId,
       name,
-      group: group || '기본 그룹',
       versions: []
     }
   });
@@ -609,108 +606,6 @@ app.post('/api/variable-presets/:taskId', (req, res) => {
   res.json({ success: true });
 });
 
-// 7. Group Management APIs (새로 추가)
-// 그룹 목록 조회
-app.get('/api/groups', (req, res) => {
-  try {
-    // 모든 태스크에서 사용 중인 그룹 추출
-    const groups = new Set();
-    Object.values(promptData.tasks).forEach(task => {
-      if (task.group) {
-        groups.add(task.group);
-      }
-    });
-    
-    // 기본 그룹은 항상 포함
-    groups.add('기본 그룹');
-    
-    const groupList = Array.from(groups).sort();
-    console.log(`[${new Date().toISOString()}] 그룹 목록 조회:`, groupList);
-    
-    res.json({ groups: groupList });
-  } catch (error) {
-    console.error(`[${new Date().toISOString()}] 그룹 목록 조회 오류:`, error);
-    res.status(500).json({ error: 'Failed to fetch groups' });
-  }
-});
-
-// 그룹 추가
-app.post('/api/groups', (req, res) => {
-  try {
-    const { groupName } = req.body;
-    
-    if (!groupName || !groupName.trim()) {
-      return res.status(400).json({ error: 'Group name is required' });
-    }
-    
-    const trimmedName = groupName.trim();
-    console.log(`[${new Date().toISOString()}] 그룹 추가 요청:`, trimmedName);
-    
-    // 중복 체크 (현재 태스크들의 그룹 확인)
-    const existingGroups = new Set();
-    Object.values(promptData.tasks).forEach(task => {
-      if (task.group) {
-        existingGroups.add(task.group);
-      }
-    });
-    
-    if (existingGroups.has(trimmedName)) {
-      return res.status(409).json({ error: 'Group already exists' });
-    }
-    
-    // 그룹은 태스크 생성 시 자동으로 생성되므로 별도 저장은 필요 없음
-    console.log(`[${new Date().toISOString()}] 그룹 추가 성공:`, trimmedName);
-    
-    res.status(201).json({ 
-      success: true, 
-      message: `Group '${trimmedName}' created successfully`,
-      groupName: trimmedName
-    });
-  } catch (error) {
-    console.error(`[${new Date().toISOString()}] 그룹 추가 오류:`, error);
-    res.status(500).json({ error: 'Failed to create group' });
-  }
-});
-
-// 그룹 삭제
-app.delete('/api/groups/:groupName', (req, res) => {
-  try {
-    const { groupName } = req.params;
-    const decodedGroupName = decodeURIComponent(groupName);
-    
-    console.log(`[${new Date().toISOString()}] 그룹 삭제 요청:`, decodedGroupName);
-    
-    // 기본 그룹은 삭제 불가
-    if (decodedGroupName === '기본 그룹') {
-      return res.status(400).json({ error: 'Cannot delete default group' });
-    }
-    
-    // 해당 그룹에 속한 태스크들을 기본 그룹으로 이동
-    let movedTasksCount = 0;
-    Object.keys(promptData.tasks).forEach(taskId => {
-      if (promptData.tasks[taskId].group === decodedGroupName) {
-        promptData.tasks[taskId].group = '기본 그룹';
-        movedTasksCount++;
-      }
-    });
-    
-    saveData();
-    
-    console.log(`[${new Date().toISOString()}] 그룹 삭제 완료:`, {
-      deletedGroup: decodedGroupName,
-      movedTasks: movedTasksCount
-    });
-    
-    res.json({ 
-      success: true, 
-      message: `Group '${decodedGroupName}' deleted successfully`,
-      movedTasksCount
-    });
-  } catch (error) {
-    console.error(`[${new Date().toISOString()}] 그룹 삭제 오류:`, error);
-    res.status(500).json({ error: 'Failed to delete group' });
-  }
-});
 
 // 8. LLM Endpoints Management APIs
 // LLM 엔드포인트 목록 조회

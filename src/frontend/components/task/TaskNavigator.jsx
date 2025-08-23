@@ -3,37 +3,9 @@ import React, { useState, useMemo } from 'react';
 import { useStore } from '../../store.jsx';
 
 const TaskNavigator = ({ tasks, currentTask, onSelectTask }) => {
-  const { createTask } = useStore();
+  const { createTask, deleteTask } = useStore();
   const [activeTab, setActiveTab] = useState('all'); // all, recent, favorites
-  const [expandedFolders, setExpandedFolders] = useState(['marketing']); // Start with marketing expanded
-
-  // Organize tasks into folders (mock data structure for demonstration)
-  const folderStructure = useMemo(() => {
-    const folders = {
-      marketing: { name: '마케팅 콘텐츠', icon: '📂', tasks: [] },
-      development: { name: '개발 도구', icon: '📁', tasks: [] },
-      analysis: { name: '데이터 분석', icon: '📁', tasks: [] },
-      support: { name: '고객 서비스', icon: '📁', tasks: [] }
-    };
-
-    // Categorize tasks (simple categorization based on task name keywords)
-    Object.entries(tasks).forEach(([id, task]) => {
-      const name = task.name.toLowerCase();
-      if (name.includes('블로그') || name.includes('소셜') || name.includes('마케팅') || name.includes('캐') || name.includes('이메일')) {
-        folders.marketing.tasks.push({ id, ...task });
-      } else if (name.includes('개발') || name.includes('코드') || name.includes('API')) {
-        folders.development.tasks.push({ id, ...task });
-      } else if (name.includes('분석') || name.includes('데이터') || name.includes('리포트')) {
-        folders.analysis.tasks.push({ id, ...task });
-      } else if (name.includes('고객') || name.includes('서비스') || name.includes('지원')) {
-        folders.support.tasks.push({ id, ...task });
-      } else {
-        folders.marketing.tasks.push({ id, ...task }); // Default to marketing
-      }
-    });
-
-    return folders;
-  }, [tasks]);
+  const [showTaskDeleteConfirm, setShowTaskDeleteConfirm] = useState(null);
 
   const handleNewTask = async () => {
     try {
@@ -45,14 +17,6 @@ const TaskNavigator = ({ tasks, currentTask, onSelectTask }) => {
       console.error('태스크 생성 실패:', error);
       alert('태스크 생성에 실패했습니다.');
     }
-  };
-
-  const toggleFolder = (folderId) => {
-    setExpandedFolders(prev => 
-      prev.includes(folderId) 
-        ? prev.filter(id => id !== folderId)
-        : [...prev, folderId]
-    );
   };
 
   const formatTimeAgo = (updatedAt) => {
@@ -67,6 +31,8 @@ const TaskNavigator = ({ tasks, currentTask, onSelectTask }) => {
     if (diffInHours < 72) return '2일 전';
     return '3일 전';
   };
+
+  const taskList = useMemo(() => Object.values(tasks), [tasks]);
 
   return (
     <>
@@ -107,128 +73,123 @@ const TaskNavigator = ({ tasks, currentTask, onSelectTask }) => {
 
       {/* Task List */}
       <div className="p-5">
-        {Object.entries(folderStructure).map(([folderId, folder]) => {
-          const isExpanded = expandedFolders.includes(folderId);
-          const taskCount = folder.tasks.length;
-          
-          if (taskCount === 0) return null;
+        <div className="space-y-1">
+          {taskList.map(task => {
+            const isActive = currentTask === task.id;
+            const versionCount = task.versions ? Object.keys(task.versions).length : 0;
 
-          return (
-            <div key={folderId} className="mb-6">
-              {/* Folder Header */}
-              <button
-                className="folder-header"
-                onClick={() => toggleFolder(folderId)}
+            return (
+              <div
+                key={task.id}
+                className="task-item flex items-center justify-between"
                 style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  width: '100%',
-                  padding: '8px',
-                  background: 'transparent',
-                  border: 'none',
+                  position: 'relative',
+                  padding: '10px 12px',
+                  marginBottom: '2px',
                   borderRadius: '3px',
-                  color: 'var(--text-muted)',
-                  fontSize: '11px',
                   cursor: 'pointer',
-                  transition: 'background-color 0.15s ease'
+                  transition: 'all 0.15s ease',
+                  background: isActive ? 'var(--accent-primary)' : 'transparent',
+                  color: isActive ? 'white' : 'var(--text-primary)',
+                  border: isActive ? '1px solid var(--accent-primary)' : '1px solid transparent'
                 }}
-                onMouseEnter={(e) => e.target.style.background = 'var(--bg-hover)'}
-                onMouseLeave={(e) => e.target.style.background = 'transparent'}
+                onClick={() => onSelectTask(task.id)}
+                onMouseEnter={(e) => {
+                  if (!isActive) {
+                    e.currentTarget.style.background = 'var(--bg-hover)';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (!isActive) {
+                    e.currentTarget.style.background = 'transparent';
+                  }
+                }}
               >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <span>{isExpanded ? '▼' : '▶'}</span>
-                  <span>{folder.icon}</span>
-                  <span>{folder.name}</span>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-sm">📄</span>
+                    <span
+                      className={`text-sm font-medium truncate ${
+                        isActive ? 'text-white' : 'text-gray-300'
+                      }`}
+                    >
+                      {task.name}
+                    </span>
+                  </div>
+                  <div className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                    {versionCount}개 버전 • 수정 {formatTimeAgo(task.updatedAt)}
+                  </div>
                 </div>
-                <span style={{ fontSize: '10px', color: 'var(--text-dim)' }}>
-                  {taskCount}
-                </span>
-              </button>
 
-              {/* Tasks in Folder */}
-              {isExpanded && (
-                <div className="mt-2 space-y-1">
-                  {folder.tasks.map(task => {
-                    const isActive = currentTask === task.id;
-                    const versionCount = task.versions ? Object.keys(task.versions).length : 1;
-                    
-                    return (
-                      <div
-                        key={task.id}
-                        className="task-item"
+                <div className="flex items-center ml-2">
+                    {showTaskDeleteConfirm === task.id ? (
+                    <div className="flex items-center bg-red-100 dark:bg-red-900 rounded px-1">
+                        <button
+                        className="text-xs text-red-600 dark:text-red-300 px-1"
+                        onClick={async (e) => {
+                            e.stopPropagation();
+                            try {
+                            await deleteTask(task.id);
+                            setShowTaskDeleteConfirm(null);
+                            } catch (error) {
+                            console.error('태스크 삭제 오류:', error);
+                            alert('태스크 삭제 중 오류가 발생했습니다: ' + error.message);
+                            }
+                        }}
+                        >
+                        확인
+                        </button>
+                        <button
+                        className="text-xs text-gray-600 dark:text-gray-300 px-1 ml-1"
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            setShowTaskDeleteConfirm(null);
+                        }}
+                        >
+                        취소
+                        </button>
+                    </div>
+                    ) : (
+                    <button
+                        className="text-gray-500 hover:text-red-500 rounded p-1 opacity-0 group-hover:opacity-100"
+                        onClick={(e) => {
+                        e.stopPropagation();
+                        setShowTaskDeleteConfirm(task.id);
+                        }}
+                        title="태스크 삭제"
+                    >
+                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                    </button>
+                    )}
+
+                    <button
                         style={{
-                          position: 'relative',
-                          padding: '10px 12px',
-                          marginLeft: '24px',
-                          marginBottom: '2px',
-                          borderRadius: '3px',
-                          cursor: 'pointer',
-                          transition: 'all 0.15s ease',
-                          background: isActive ? 'var(--accent-primary)' : 'transparent',
-                          color: isActive ? 'white' : 'var(--text-primary)',
-                          border: isActive ? '1px solid var(--accent-primary)' : '1px solid transparent'
+                        background: 'transparent',
+                        border: 'none',
+                        color: 'var(--text-muted)',
+                        fontSize: '12px',
+                        cursor: 'pointer',
+                        padding: '2px',
+                        borderRadius: '2px',
+                        opacity: '0.7',
+                        transition: 'opacity 0.15s ease'
                         }}
-                        onClick={() => onSelectTask(task.id)}
-                        onMouseEnter={(e) => {
-                          if (!isActive) {
-                            e.target.style.background = 'var(--bg-hover)';
-                          }
+                        onClick={(e) => {
+                        e.stopPropagation();
+                        // TODO: Toggle favorite
                         }}
-                        onMouseLeave={(e) => {
-                          if (!isActive) {
-                            e.target.style.background = 'transparent';
-                          }
-                        }}
-                      >
-                        <div className="flex items-start justify-between">
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-1">
-                              <span className="text-sm">📄</span>
-                              <span 
-                                className={`text-sm font-medium truncate ${
-                                  isActive ? 'text-white' : 'text-gray-300'
-                                }`}
-                              >
-                                {task.name}
-                              </span>
-                            </div>
-                            <div className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                              {versionCount}개 버전 • 수정 {formatTimeAgo(task.updatedAt)}
-                            </div>
-                          </div>
-                          
-                          {/* Favorite Star */}
-                          <button 
-                            style={{
-                              background: 'transparent',
-                              border: 'none',
-                              color: 'var(--text-muted)',
-                              fontSize: '12px',
-                              cursor: 'pointer',
-                              padding: '2px',
-                              borderRadius: '2px',
-                              opacity: '0.7',
-                              transition: 'opacity 0.15s ease'
-                            }}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              // TODO: Toggle favorite
-                            }}
-                            onMouseEnter={(e) => e.target.style.opacity = '1'}
-                            onMouseLeave={(e) => e.target.style.opacity = '0.7'}
-                          >
-                            ⭐
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })}
+                        onMouseEnter={(e) => e.target.style.opacity = '1'}
+                        onMouseLeave={(e) => e.target.style.opacity = '0.7'}
+                    >
+                        ⭐
+                    </button>
                 </div>
-              )}
-            </div>
-          );
-        })}
+              </div>
+            );
+          })}
+        </div>
 
         {/* Empty State */}
         {Object.keys(tasks).length === 0 && (
