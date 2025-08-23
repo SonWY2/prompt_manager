@@ -25,50 +25,10 @@ const PromptEditor = ({ taskId, versionId }) => {
     system: false,
     main: false,
   });
-  const [isDragging, setIsDragging] = useState(false);
-  const [sectionHeights, setSectionHeights] = useState({
-    description: 100, // initial height in px
-    system: 120,    // initial height in px
-  });
 
   const toggleSection = (section) => {
     setCollapsedSections(prev => ({ ...prev, [section]: !prev[section] }));
   };
-
-  const startDrag = (e, gutter) => {
-    e.preventDefault();
-    setIsDragging(gutter);
-  };
-
-  useEffect(() => {
-    const handleMouseMove = (e) => {
-      if (!isDragging) return;
-
-      setSectionHeights(prev => {
-        const newHeights = { ...prev };
-        if (isDragging === 'description-system') {
-          newHeights.description = Math.max(50, prev.description + e.movementY);
-        } else if (isDragging === 'system-main') {
-          newHeights.system = Math.max(50, prev.system + e.movementY);
-        }
-        return newHeights;
-      });
-    };
-
-    const handleMouseUp = () => {
-      setIsDragging(false);
-    };
-
-    if (isDragging) {
-      window.addEventListener('mousemove', handleMouseMove);
-      window.addEventListener('mouseup', handleMouseUp);
-    }
-
-    return () => {
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
-    };
-  }, [isDragging]);
 
   const currentTask = taskId ? tasks[taskId] : null;
   const currentVersionData = currentTask?.versions?.find(v => v.id === versionId);
@@ -276,7 +236,7 @@ const PromptEditor = ({ taskId, versionId }) => {
           /* Prompt Tab */
           <div className="flex flex-col h-full space-y-4">
             {/* Description */}
-            <div className="card flex flex-col" style={{ height: collapsedSections.description ? 'auto' : `${sectionHeights.description}px` }}>
+            <div className="card">
               <h3 className="text-sm font-medium mb-3 flex items-center justify-between cursor-pointer" onClick={() => toggleSection('description')}>
                 <span className="flex items-center gap-2">
                   📝 Prompt Description
@@ -288,7 +248,7 @@ const PromptEditor = ({ taskId, versionId }) => {
                   value={taskDescription}
                   onChange={(e) => setTaskDescription(e.target.value)}
                   placeholder="Describe the purpose and usage of this prompt..."
-                  className="w-full flex-1 p-3 bg-transparent border rounded text-sm"
+                  className="w-full h-16 p-3 bg-transparent border rounded text-sm"
                   style={{
                     borderColor: 'var(--border-primary)',
                     color: 'var(--text-primary)'
@@ -297,10 +257,8 @@ const PromptEditor = ({ taskId, versionId }) => {
               )}
             </div>
 
-            <div className="w-full h-2 cursor-row-resize bg-transparent hover:bg-blue-500" onMouseDown={(e) => startDrag(e, 'description-system')} />
-
             {/* System Prompt */}
-            <div className="card flex flex-col" style={{ height: collapsedSections.system ? 'auto' : `${sectionHeights.system}px` }}>
+            <div className="card">
               <h3 className="text-sm font-medium mb-3 flex items-center justify-between cursor-pointer" onClick={() => toggleSection('system')}>
                 <span className="flex items-center gap-2">
                   🤖 System Prompt
@@ -312,7 +270,7 @@ const PromptEditor = ({ taskId, versionId }) => {
                   value={systemPrompt}
                   onChange={(e) => setSystemPrompt(e.target.value)}
                   placeholder="Define AI role and instructions..."
-                  className="w-full flex-1 p-3 bg-transparent border rounded text-sm"
+                  className="w-full h-20 p-3 bg-transparent border rounded text-sm"
                   style={{
                     borderColor: 'var(--border-primary)',
                     color: 'var(--text-primary)'
@@ -320,8 +278,6 @@ const PromptEditor = ({ taskId, versionId }) => {
                 />
               )}
             </div>
-
-            <div className="w-full h-2 cursor-row-resize bg-transparent hover:bg-blue-500" onMouseDown={(e) => startDrag(e, 'system-main')} />
 
             {/* Main Prompt */}
             <div className="card flex flex-col flex-1">
