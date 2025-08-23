@@ -15,7 +15,7 @@ set "VITE_PORT=%VITE_PORT%"
 set "SERVER_PORT=%API_PORT%"
 
 echo [run_dev.bat] Starting Python backend on port %API_PORT%...
-START "Backend" uvicorn src.backend.main:app --host 127.0.0.1 --port %API_PORT% --reload
+START "Backend" python src/backend/main.py --host 127.0.0.1 --port %API_PORT% --reload
 
 echo [run_dev.bat] Starting React frontend on port %VITE_PORT%...
 START "Frontend" npm run dev
