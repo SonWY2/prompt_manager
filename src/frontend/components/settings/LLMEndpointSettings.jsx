@@ -271,15 +271,9 @@ function LLMEndpointSettings() {
             <div className="text-center" style={{ color: 'var(--text-muted)' }}>
               <div className="text-5xl mb-4">⚙️</div>
               <h3 className="text-lg font-medium mb-2" style={{ color: 'var(--text-primary)' }}>LLM Endpoint Settings</h3>
-              <p className="mb-6">
-                Select an endpoint from the left or create a new one.
+              <p>
+                Select an endpoint from the left, or create a new one using the buttons below the list.
               </p>
-              <button
-                onClick={handleCreateNew}
-                className="btn btn-primary"
-              >
-                + Add New Endpoint
-              </button>
             </div>
           </div>
         )}

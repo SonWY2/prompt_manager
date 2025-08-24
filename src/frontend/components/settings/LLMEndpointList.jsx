@@ -69,13 +69,6 @@ function LLMEndpointList({
                     >
                       ✏️
                     </button>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); onDelete(endpoint.id); }}
-                      className="p-1 rounded hover:bg-gray-600"
-                      title="Delete"
-                    >
-                      🗑️
-                    </button>
                   </div>
                 </div>
               );
@@ -84,14 +77,23 @@ function LLMEndpointList({
         )}
       </div>
       
-      {/* Add New Endpoint Button */}
+      {/* Footer Buttons */}
       <div className="p-4 border-t" style={{ borderColor: 'var(--border-primary)' }}>
-        <button
-          onClick={onCreateNew}
-          className="btn btn-primary w-full"
-        >
-          + Add New Endpoint
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={onCreateNew}
+            className="btn btn-primary w-full"
+          >
+            + New Endpoint
+          </button>
+          <button
+            onClick={() => onDelete(selectedEndpointId)}
+            className="btn btn-danger w-full"
+            disabled={!selectedEndpointId}
+          >
+            Delete Endpoint
+          </button>
+        </div>
       </div>
     </div>
   );
