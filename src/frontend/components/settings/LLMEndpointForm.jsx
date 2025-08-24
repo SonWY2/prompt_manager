@@ -6,7 +6,8 @@ function LLMEndpointForm({ endpoint, isEditing, onSave, onCancel }) {
     baseUrl: '',
     apiKey: '',
     defaultModel: '',
-    description: ''
+    description: '',
+    contextSize: '',
   });
   
   const [errors, setErrors] = useState({});
@@ -20,7 +21,8 @@ function LLMEndpointForm({ endpoint, isEditing, onSave, onCancel }) {
         baseUrl: endpoint.baseUrl || '',
         apiKey: endpoint.apiKey || '',
         defaultModel: endpoint.defaultModel || '',
-        description: endpoint.description || ''
+        description: endpoint.description || '',
+        contextSize: endpoint.contextSize || '',
       });
     } else {
       // 새로 생성하는 경우 기본값
@@ -29,7 +31,8 @@ function LLMEndpointForm({ endpoint, isEditing, onSave, onCancel }) {
         baseUrl: '',
         apiKey: '',
         defaultModel: '',
-        description: ''
+        description: '',
+        contextSize: '',
       });
     }
     setErrors({});
@@ -285,6 +288,23 @@ function LLMEndpointForm({ endpoint, isEditing, onSave, onCancel }) {
             </div>
           </div>
           
+          {/* Context Size */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              Context Size (선택사항)
+            </label>
+            <input
+              type="number"
+              value={formData.contextSize}
+              onChange={(e) => handleInputChange('contextSize', e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white text-gray-900 placeholder-gray-400 dark:bg-gray-800 dark:text-gray-200 dark:placeholder-gray-500"
+              placeholder="예: 4096, 8192"
+            />
+            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              모델의 컨텍스트 윈도우 크기를 지정합니다.
+            </p>
+          </div>
+
           {/* 설명 */}
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">

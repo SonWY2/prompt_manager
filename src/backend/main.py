@@ -37,6 +37,8 @@ os.makedirs(DATA_DIR, exist_ok=True)
 db = TinyDB(DB_PATH, indent=2, ensure_ascii=False)
 tasks_table = db.table('tasks')
 llm_endpoints_table = db.table('llm_endpoints')
+settings_table = db.table('settings')
+
 
 # --- Pydantic Models ---
 class Version(BaseModel):
@@ -90,8 +92,10 @@ class LLMEndpoint(BaseModel):
     apiKey: Optional[str] = None
     defaultModel: Optional[str] = None
     description: Optional[str] = None
+    contextSize: Optional[int] = None
     isDefault: bool = False
     createdAt: str = Field(default_factory=lambda: datetime.datetime.now().isoformat())
+
 
 class LLMEndpointUpdate(BaseModel):
     name: Optional[str] = None
@@ -99,12 +103,24 @@ class LLMEndpointUpdate(BaseModel):
     apiKey: Optional[str] = None
     defaultModel: Optional[str] = None
     description: Optional[str] = None
+    contextSize: Optional[int] = None
+
 
 # --- Helper Functions ---
 def render_template(template: str, data: dict) -> str:
     for key, value in data.items():
         template = template.replace(f"{{{{{key}}}}}", str(value))
     return template
+
+
+def get_settings():
+    settings = settings_table.get(doc_id=1)
+    if not settings:
+        # If settings don't exist, create them
+        default_settings = {'activeEndpointId': None, 'defaultEndpointId': None}
+        settings_table.insert(default_settings)
+        return default_settings
+    return settings
 
 # --- API Endpoints ---
 
@@ -296,66 +312,85 @@ async def call_llm_endpoint(call: LLMCall):
 @app.get("/api/llm-endpoints")
 def get_llm_endpoints():
     endpoints = llm_endpoints_table.all()
-    # This part is tricky as TinyDB doesn't have a global config table easily.
-    # We can store active/default ids in a separate table or a specific document.
-    # For now, we assume the first endpoint is active/default if not set.
-    active_id = llm_endpoints_table.get(doc_id=1).get('activeEndpointId') if llm_endpoints_table.get(doc_id=1) else None
-    default_id = llm_endpoints_table.get(doc_id=1).get('defaultEndpointId') if llm_endpoints_table.get(doc_id=1) else None
-
+    settings = get_settings()
+    active_id = settings.get('activeEndpointId')
+    default_id = settings.get('defaultEndpointId')
     return {"endpoints": endpoints, "activeEndpointId": active_id, "defaultEndpointId": default_id}
+
 
 @app.post("/api/llm-endpoints", status_code=201)
 def create_llm_endpoint(endpoint: LLMEndpoint):
-    new_endpoint = endpoint.dict()
+    new_endpoint_data = endpoint.dict()
 
+    # If this is the very first endpoint, make it the default and active one.
     if not llm_endpoints_table.all():
-        new_endpoint["isDefault"] = True
-        # Storing active/default ids is not straightforward in tinydb tables.
-        # This part of logic might need to be adapted based on how we want to store global state.
-        # For now, this logic is simplified.
+        new_endpoint_data["isDefault"] = True
+        settings = get_settings()
+        settings_table.update({
+            'activeEndpointId': new_endpoint_data['id'],
+            'defaultEndpointId': new_endpoint_data['id']
+        }, doc_ids=[1])
 
-    llm_endpoints_table.insert(new_endpoint)
+    llm_endpoints_table.insert(new_endpoint_data)
+    # Re-fetch to ensure we return the data as it is in the DB
+    new_endpoint = llm_endpoints_table.get(where('id') == new_endpoint_data['id'])
     return {"success": True, "endpoint": new_endpoint}
+
 
 @app.put("/api/llm-endpoints/{endpoint_id}")
 def update_llm_endpoint(endpoint_id: str, updates: LLMEndpointUpdate):
-    update_data = updates.dict(exclude_unset=True)
-    updated_count = llm_endpoints_table.update(update_data, where('id') == endpoint_id)
-
-    if not updated_count:
+    if not llm_endpoints_table.contains(where('id') == endpoint_id):
         raise HTTPException(status_code=404, detail="LLM endpoint not found")
 
-    endpoint = llm_endpoints_table.get(where('id') == endpoint_id)
-    return {"success": True, "endpoint": endpoint}
+    update_data = updates.dict(exclude_unset=True)
+    llm_endpoints_table.update(update_data, where('id') == endpoint_id)
+
+    updated_endpoint = llm_endpoints_table.get(where('id') == endpoint_id)
+    return {"success": True, "endpoint": updated_endpoint}
+
 
 @app.delete("/api/llm-endpoints/{endpoint_id}")
 def delete_llm_endpoint(endpoint_id: str):
-    if not llm_endpoints_table.contains(where('id') == endpoint_id):
+    deleted_endpoint = llm_endpoints_table.get(where('id') == endpoint_id)
+    if not deleted_endpoint:
         raise HTTPException(status_code=404, detail="LLM endpoint not found")
 
-    deleted_endpoint = llm_endpoints_table.get(where('id') == endpoint_id)
     llm_endpoints_table.remove(where('id') == endpoint_id)
 
-    return {"success": True, "message": f"LLM endpoint '{deleted_endpoint['name']}' deleted."}
+    settings = get_settings()
+    update_payload = {}
+    if settings.get('activeEndpointId') == endpoint_id:
+        update_payload['activeEndpointId'] = None
+    if settings.get('defaultEndpointId') == endpoint_id:
+        update_payload['defaultEndpointId'] = None
+
+    if update_payload:
+        settings_table.update(update_payload, doc_ids=[1])
+
+    return {"success": True, "message": f"LLM endpoint '{deleted_endpoint.get('name', 'N/A')}' deleted."}
+
 
 @app.post("/api/llm-endpoints/{endpoint_id}/activate")
 def activate_llm_endpoint(endpoint_id: str):
-    # Activating an endpoint is a concept that needs to be stored somewhere.
-    # In a simple key-value store, this would be easy. With TinyDB, we could have a
-    # separate table for settings, or a specific document.
-    # This feature is simplified here. We are not storing the active state.
     if not llm_endpoints_table.contains(where('id') == endpoint_id):
         raise HTTPException(status_code=404, detail="LLM endpoint not found")
 
+    settings_table.update({'activeEndpointId': endpoint_id}, doc_ids=[1])
     return {"success": True, "activeEndpointId": endpoint_id}
+
 
 @app.post("/api/llm-endpoints/{endpoint_id}/set-default")
 def set_default_llm_endpoint(endpoint_id: str):
     if not llm_endpoints_table.contains(where('id') == endpoint_id):
         raise HTTPException(status_code=404, detail="LLM endpoint not found")
 
+    # Unset previous default
     llm_endpoints_table.update({'isDefault': False}, where('isDefault') == True)
+    # Set new default
     llm_endpoints_table.update({'isDefault': True}, where('id') == endpoint_id)
+
+    # Update settings
+    settings_table.update({'defaultEndpointId': endpoint_id}, doc_ids=[1])
 
     return {"success": True, "defaultEndpointId": endpoint_id}
 

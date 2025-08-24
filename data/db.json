@@ -16,5 +16,11 @@
         }
       ]
     }
+  },
+  "settings": {
+    "1": {
+      "activeEndpointId": null,
+      "defaultEndpointId": null
+    }
   }
 }
