@@ -116,223 +116,160 @@ function LLMEndpointForm({ endpoint, isEditing, onSave, onCancel }) {
     }
   };
   
+  const FormLabel = ({ children, required = false }) => (
+    <label className="block text-xs font-medium mb-2" style={{ color: 'var(--text-muted)' }}>
+      {children} {required && <span style={{ color: 'var(--accent-danger)' }}>*</span>}
+    </label>
+  );
+
+  const PresetButton = ({ children, ...props }) => (
+    <button
+      type="button"
+      className="px-2 py-1 text-xs rounded"
+      style={{ background: 'var(--bg-tertiary)', color: 'var(--text-secondary)'}}
+      {...props}
+    >
+      {children}
+    </button>
+  );
+
   return (
     <div className="p-6">
-      <div className="max-w-2xl">
+      <div className="card">
         <div className="mb-6">
-          <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
-            {isEditing ? '엔드포인트 편집' : '새 엔드포인트 추가'}
+          <h2 className="text-lg font-medium" style={{ color: 'var(--text-primary)' }}>
+            {isEditing ? 'Edit Endpoint' : 'Add New Endpoint'}
           </h2>
-          <p className="text-gray-600 dark:text-gray-400">
-            LLM API 엔드포인트 정보를 입력하세요.
+          <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+            Provide the details for the LLM API endpoint.
           </p>
         </div>
         
-        <div className="space-y-6">
-          {/* 이름 */}
+        <div className="space-y-5">
+          {/* Name */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              이름 <span className="text-red-500">*</span>
-            </label>
+            <FormLabel required>Name</FormLabel>
             <input
               type="text"
               value={formData.name}
               onChange={(e) => handleInputChange('name', e.target.value)}
-              className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white text-gray-900 placeholder-gray-400 dark:bg-gray-800 dark:text-gray-200 dark:placeholder-gray-500 ${
-                errors.name
-                  ? 'border-red-500 dark:border-red-500'
-                  : 'border-gray-300 dark:border-gray-600'
-              }`}
-              placeholder="예: OpenAI GPT-4, Local vLLM Server"
+              className={`input w-full ${errors.name ? 'border-red-500' : ''}`}
+              placeholder="e.g., OpenAI GPT-4, Local vLLM Server"
             />
             {errors.name && (
-              <p className="mt-1 text-sm text-red-600 dark:text-red-400">{errors.name}</p>
+              <p className="mt-1 text-xs text-red-500">{errors.name}</p>
             )}
           </div>
           
           {/* Base URL */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              Base URL <span className="text-red-500">*</span>
-            </label>
+            <FormLabel required>Base URL</FormLabel>
             <div className="space-y-2">
               <input
                 type="url"
                 value={formData.baseUrl}
                 onChange={(e) => handleInputChange('baseUrl', e.target.value)}
-                className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white text-gray-900 placeholder-gray-400 dark:bg-gray-800 dark:text-gray-200 dark:placeholder-gray-500 ${
-                  errors.baseUrl
-                    ? 'border-red-500 dark:border-red-500'
-                    : 'border-gray-300 dark:border-gray-600'
-                }`}
+                className={`input w-full ${errors.baseUrl ? 'border-red-500' : ''}`}
                 placeholder="https://api.openai.com/v1"
               />
-              
-              {/* URL 프리셋 버튼들 */}
               <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={() => handlePresetUrl('openai')}
-                  className="px-3 py-1 text-xs bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded"
-                >
-                  OpenAI
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handlePresetUrl('anthropic')}
-                  className="px-3 py-1 text-xs bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded"
-                >
-                  Anthropic
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handlePresetUrl('localVllm')}
-                  className="px-3 py-1 text-xs bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded"
-                >
-                  Local vLLM
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handlePresetUrl('localOllama')}
-                  className="px-3 py-1 text-xs bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded"
-                >
-                  Local Ollama
-                </button>
+                <PresetButton onClick={() => handlePresetUrl('openai')}>OpenAI</PresetButton>
+                <PresetButton onClick={() => handlePresetUrl('anthropic')}>Anthropic</PresetButton>
+                <PresetButton onClick={() => handlePresetUrl('localVllm')}>Local vLLM</PresetButton>
+                <PresetButton onClick={() => handlePresetUrl('localOllama')}>Local Ollama</PresetButton>
               </div>
             </div>
             {errors.baseUrl && (
-              <p className="mt-1 text-sm text-red-600 dark:text-red-400">{errors.baseUrl}</p>
+              <p className="mt-1 text-sm text-red-500">{errors.baseUrl}</p>
             )}
           </div>
           
-          {/* API 키 */}
+          {/* API Key */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              API 키 (선택사항)
-            </label>
+            <FormLabel>API Key (Optional)</FormLabel>
             <div className="relative">
               <input
                 type={showApiKey ? 'text' : 'password'}
                 value={formData.apiKey}
                 onChange={(e) => handleInputChange('apiKey', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white text-gray-900 placeholder-gray-400 dark:bg-gray-800 dark:text-gray-200 dark:placeholder-gray-500 pr-10"
+                className="input w-full pr-10"
                 placeholder="sk-..."
               />
               <button
                 type="button"
                 onClick={() => setShowApiKey(!showApiKey)}
-                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                className="absolute right-3 top-1/2 transform -translate-y-1/2"
+                style={{ color: 'var(--text-muted)'}}
               >
-                {showApiKey ? (
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.878 9.878L9.878 9.878M12 12l-3.12-3.12a10.054 10.054 0 00-1.558 3.029M9.878 9.878l3.12-3.12m0 0l3.12 3.12m-3.12-3.12l3.12 3.12" />
-                  </svg>
-                ) : (
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                  </svg>
-                )}
+                {showApiKey ? '👁️' : '🔒'}
               </button>
             </div>
-            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              로컬 서버인 경우 비워두어도 됩니다.
+            <p className="mt-1 text-xs" style={{ color: 'var(--text-dim)' }}>
+              Leave blank for local servers that do not require an API key.
             </p>
           </div>
           
-          {/* 기본 모델 */}
+          {/* Default Model */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              기본 모델 (선택사항)
-            </label>
+            <FormLabel>Default Model (Optional)</FormLabel>
             <div className="space-y-2">
               <input
                 type="text"
                 value={formData.defaultModel}
                 onChange={(e) => handleInputChange('defaultModel', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white text-gray-900 placeholder-gray-400 dark:bg-gray-800 dark:text-gray-200 dark:placeholder-gray-500"
-                placeholder="gpt-4o, claude-3-opus-20240229, mistralai/Mistral-7B-Instruct-v0.2"
+                className="input w-full"
+                placeholder="gpt-4o, claude-3-opus-20240229, etc."
               />
-              
-              {/* 모델 프리셋 버튼들 */}
               <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={() => handlePresetModel('gpt-4o')}
-                  className="px-3 py-1 text-xs bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded"
-                >
-                  GPT-4o
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handlePresetModel('gpt-4-turbo')}
-                  className="px-3 py-1 text-xs bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded"
-                >
-                  GPT-4 Turbo
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handlePresetModel('claude-3-opus')}
-                  className="px-3 py-1 text-xs bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded"
-                >
-                  Claude 3 Opus
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handlePresetModel('mistral-7b')}
-                  className="px-3 py-1 text-xs bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded"
-                >
-                  Mistral 7B
-                </button>
+                <PresetButton onClick={() => handlePresetModel('gpt-4o')}>GPT-4o</PresetButton>
+                <PresetButton onClick={() => handlePresetModel('gpt-4-turbo')}>GPT-4 Turbo</PresetButton>
+                <PresetButton onClick={() => handlePresetModel('claude-3-opus')}>Claude 3 Opus</PresetButton>
+                <PresetButton onClick={() => handlePresetModel('mistral-7b')}>Mistral 7B</PresetButton>
               </div>
             </div>
           </div>
           
           {/* Context Size */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              Context Size (선택사항)
-            </label>
+            <FormLabel>Context Size (Optional)</FormLabel>
             <input
               type="number"
               value={formData.contextSize}
               onChange={(e) => handleInputChange('contextSize', e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white text-gray-900 placeholder-gray-400 dark:bg-gray-800 dark:text-gray-200 dark:placeholder-gray-500"
-              placeholder="예: 4096, 8192"
+              className="input w-full"
+              placeholder="e.g., 4096, 8192"
             />
-            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              모델의 컨텍스트 윈도우 크기를 지정합니다.
+            <p className="mt-1 text-xs" style={{ color: 'var(--text-dim)' }}>
+              Specify the context window size of the model.
             </p>
           </div>
 
-          {/* 설명 */}
+          {/* Description */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              설명 (선택사항)
-            </label>
+            <FormLabel>Description (Optional)</FormLabel>
             <textarea
               value={formData.description}
               onChange={(e) => handleInputChange('description', e.target.value)}
               rows={3}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white text-gray-900 placeholder-gray-400 dark:bg-gray-800 dark:text-gray-200 dark:placeholder-gray-500 resize-none"
-              placeholder="이 엔드포인트에 대한 설명을 입력하세요..."
+              className="input w-full"
+              placeholder="A brief description of this endpoint..."
             />
           </div>
         </div>
         
-        {/* 액션 버튼들 */}
-        <div className="flex justify-end gap-3 mt-8 pt-6 border-t border-gray-200 dark:border-gray-700">
+        {/* Action Buttons */}
+        <div className="flex justify-end gap-3 mt-8 pt-5 border-t" style={{ borderColor: 'var(--border-primary)' }}>
           <button
             onClick={onCancel}
-            className="px-6 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+            className="btn btn-secondary"
           >
-            취소
+            Cancel
           </button>
           <button
             onClick={handleSave}
-            className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+            className="btn btn-primary"
           >
-            {isEditing ? '업데이트' : '생성'}
+            {isEditing ? 'Update Endpoint' : 'Create Endpoint'}
           </button>
         </div>
       </div>

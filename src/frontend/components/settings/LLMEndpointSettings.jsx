@@ -134,9 +134,12 @@ function LLMEndpointSettings() {
   };
   
   return (
-    <div className="h-full flex">
-      {/* 좌측 패널 - 엔드포인트 목록 */}
-      <div className="w-1/5 border-r border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
+    <div className="h-full flex" style={{ background: 'var(--bg-primary)' }}>
+      {/* Left Panel - Endpoint List */}
+      <div className="panel" style={{ width: '320px', background: 'var(--bg-secondary)'}}>
+        <div className="panel-header">
+          <h2 className="panel-title">LLM Providers</h2>
+        </div>
         <LLMEndpointList
           endpoints={llmEndpoints}
           selectedEndpointId={selectedEndpointId}
@@ -150,8 +153,8 @@ function LLMEndpointSettings() {
         />
       </div>
       
-      {/* 우측 메인 콘텐츠 영역 */}
-      <div className="flex-1 bg-white dark:bg-gray-900">
+      {/* Right Panel - Main Content */}
+      <div className="flex-1">
         {(isCreating || isEditing) ? (
           <LLMEndpointForm
             endpoint={isEditing ? selectedEndpoint : null}
@@ -160,16 +163,15 @@ function LLMEndpointSettings() {
             onCancel={handleCancelForm}
           />
         ) : selectedEndpoint ? (
-          // 엔드포인트 상세 정보 표시
           <div className="p-6">
-            <div className="max-w-2xl">
+            <div className="card">
               <div className="flex justify-between items-start mb-6">
                 <div>
-                  <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
+                  <h2 className="text-lg font-medium" style={{ color: 'var(--text-primary)' }}>
                     {selectedEndpoint.name}
                   </h2>
                   {selectedEndpoint.description && (
-                    <p className="text-gray-600 dark:text-gray-400">
+                    <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
                       {selectedEndpoint.description}
                     </p>
                   )}
@@ -178,91 +180,86 @@ function LLMEndpointSettings() {
                 <div className="flex gap-2">
                   <button
                     onClick={() => handleEdit(selectedEndpointId)}
-                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors"
+                    className="btn btn-secondary"
                   >
-                    편집
+                    Edit
                   </button>
                   
                   {activeLlmEndpointId !== selectedEndpointId && (
                     <button
                       onClick={() => handleActivate(selectedEndpointId)}
-                      className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded transition-colors"
+                      className="btn btn-success"
                     >
-                      활성화
+                      Activate
                     </button>
                   )}
                   
                   {defaultLlmEndpointId !== selectedEndpointId && (
                     <button
                       onClick={() => handleSetDefault(selectedEndpointId)}
-                      className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded transition-colors"
+                      className="btn btn-primary"
                     >
-                      기본값으로 설정
+                      Set Default
                     </button>
                   )}
                 </div>
               </div>
               
-              {/* 엔드포인트 상세 정보 */}
-              <div className="space-y-4">
+              <div className="space-y-5">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-muted)' }}>
                       Base URL
                     </label>
-                    <div className="p-3 bg-gray-100 dark:bg-gray-800 rounded border">
-                      <code className="text-sm text-gray-900 dark:text-gray-100">
-                        {selectedEndpoint.baseUrl}
-                      </code>
+                    <div className="p-2 rounded text-sm" style={{ background: 'var(--bg-primary)', border: '1px solid var(--border-primary)' }}>
+                      <code>{selectedEndpoint.baseUrl}</code>
                     </div>
                   </div>
                   
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                      기본 모델
+                    <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-muted)' }}>
+                      Default Model
                     </label>
-                    <div className="p-3 bg-gray-100 dark:bg-gray-800 rounded border">
-                      <code className="text-sm text-gray-900 dark:text-gray-100">
-                        {selectedEndpoint.defaultModel || '설정되지 않음'}
-                      </code>
+                    <div className="p-2 rounded text-sm" style={{ background: 'var(--bg-primary)', border: '1px solid var(--border-primary)' }}>
+                      <code>{selectedEndpoint.defaultModel || 'Not set'}</code>
                     </div>
                   </div>
                 </div>
                 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    API 키
+                  <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-muted)' }}>
+                    API Key
                   </label>
-                  <div className="p-3 bg-gray-100 dark:bg-gray-800 rounded border">
-                    <code className="text-sm text-gray-500 dark:text-gray-400">
-                      {selectedEndpoint.apiKey ? '••••••••••••••••' : '설정되지 않음'}
+                  <div className="p-2 rounded text-sm" style={{ background: 'var(--bg-primary)', border: '1px solid var(--border-primary)' }}>
+                    <code style={{ color: 'var(--text-dim)' }}>
+                      {selectedEndpoint.apiKey ? '••••••••••••••••' : 'Not set'}
                     </code>
                   </div>
                 </div>
                 
-                <div className="flex gap-4 text-sm">
+                <div className="flex gap-4 text-sm items-center">
                   <div className="flex items-center gap-2">
-                    <span className={`inline-block w-3 h-3 rounded-full ${
-                      activeLlmEndpointId === selectedEndpointId ? 'bg-green-500' : 'bg-gray-300'
+                    <span className={`inline-block w-2 h-2 rounded-full ${
+                      activeLlmEndpointId === selectedEndpointId ? 'bg-green-500' : 'bg-gray-500'
                     }`} />
-                    <span className="text-gray-600 dark:text-gray-400">
-                      {activeLlmEndpointId === selectedEndpointId ? '현재 사용 중' : '비활성화됨'}
+                    <span style={{ color: 'var(--text-secondary)' }}>
+                      {activeLlmEndpointId === selectedEndpointId ? 'Active' : 'Inactive'}
                     </span>
                   </div>
                   
                   {defaultLlmEndpointId === selectedEndpointId && (
-                    <div className="flex items-center gap-2">
-                      <span className="inline-block w-3 h-3 rounded-full bg-purple-500" />
-                      <span className="text-gray-600 dark:text-gray-400">기본값</span>
+                    <div className="flex items-center gap-2 text-sm" style={{ color: 'var(--text-secondary)' }}>
+                      <span className="inline-block w-2 h-2 rounded-full" style={{ background: 'var(--accent-primary)' }} />
+                      <span>Default</span>
                     </div>
                   )}
                 </div>
                 
-                <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
-                  <div className="text-xs text-gray-500 dark:text-gray-400">
-                    생성일: {new Date(selectedEndpoint.createdAt).toLocaleDateString('ko-KR')}
+                <div className="pt-4 border-t" style={{ borderColor: 'var(--border-primary)' }}>
+                  <div className="text-xs" style={{ color: 'var(--text-dim)' }}>
+                    Created: {new Date(selectedEndpoint.createdAt).toLocaleString()}
                     {selectedEndpoint.updatedAt && (
-                      <> • 수정일: {new Date(selectedEndpoint.updatedAt).toLocaleDateString('ko-KR')}</>
+                      <> • Updated: {new Date(selectedEndpoint.updatedAt).toLocaleString()}</>
                     )}
                   </div>
                 </div>
@@ -270,19 +267,18 @@ function LLMEndpointSettings() {
             </div>
           </div>
         ) : (
-          // 아무것도 선택되지 않은 상태
-          <div className="p-6 h-full flex items-center justify-center">
-            <div className="text-center text-gray-500 dark:text-gray-400">
-              <div className="text-6xl mb-4">⚙️</div>
-              <h3 className="text-xl font-medium mb-2">LLM Endpoint 설정</h3>
-              <p className="mb-4">
-                왼쪽 목록에서 엔드포인트를 선택하거나 새로 추가하세요.
+          <div className="h-full flex items-center justify-center">
+            <div className="text-center" style={{ color: 'var(--text-muted)' }}>
+              <div className="text-5xl mb-4">⚙️</div>
+              <h3 className="text-lg font-medium mb-2" style={{ color: 'var(--text-primary)' }}>LLM Endpoint Settings</h3>
+              <p className="mb-6">
+                Select an endpoint from the left or create a new one.
               </p>
               <button
                 onClick={handleCreateNew}
-                className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+                className="btn btn-primary"
               >
-                새 엔드포인트 추가
+                + Add New Endpoint
               </button>
             </div>
           </div>
