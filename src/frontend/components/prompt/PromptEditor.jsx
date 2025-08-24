@@ -234,10 +234,10 @@ const PromptEditor = ({ taskId, versionId }) => {
           </div>
         ) : activeTab === 'prompt' ? (
           /* Prompt Tab */
-          <div className="space-y-4">
+          <div className="flex flex-col h-full space-y-4">
             {/* Description */}
-            <div className="card">
-              <h3 className="text-sm font-medium mb-3 flex items-center justify-between cursor-pointer" onClick={() => toggleSection('description')}>
+            <div className="card flex flex-col">
+              <h3 className="text-sm font-medium mb-3 flex items-center justify-between cursor-pointer flex-shrink-0" onClick={() => toggleSection('description')}>
                 <span className="flex items-center gap-2">
                   📝 Prompt Description
                 </span>
@@ -248,18 +248,19 @@ const PromptEditor = ({ taskId, versionId }) => {
                   value={taskDescription}
                   onChange={(e) => setTaskDescription(e.target.value)}
                   placeholder="Describe the purpose and usage of this prompt..."
-                  className="w-full h-16 p-3 bg-transparent border rounded text-sm"
+                  className="w-full p-3 bg-transparent border rounded text-sm"
                   style={{
                     borderColor: 'var(--border-primary)',
-                    color: 'var(--text-primary)'
+                    color: 'var(--text-primary)',
+                    height: '80px' // Fixed height
                   }}
                 />
               )}
             </div>
 
             {/* System Prompt */}
-            <div className="card">
-              <h3 className="text-sm font-medium mb-3 flex items-center justify-between cursor-pointer" onClick={() => toggleSection('system')}>
+            <div className="card flex flex-col">
+              <h3 className="text-sm font-medium mb-3 flex items-center justify-between cursor-pointer flex-shrink-0" onClick={() => toggleSection('system')}>
                 <span className="flex items-center gap-2">
                   🤖 System Prompt
                 </span>
@@ -270,17 +271,18 @@ const PromptEditor = ({ taskId, versionId }) => {
                   value={systemPrompt}
                   onChange={(e) => setSystemPrompt(e.target.value)}
                   placeholder="Define AI role and instructions..."
-                  className="w-full h-20 p-3 bg-transparent border rounded text-sm"
+                  className="w-full p-3 bg-transparent border rounded text-sm"
                   style={{
                     borderColor: 'var(--border-primary)',
-                    color: 'var(--text-primary)'
+                    color: 'var(--text-primary)',
+                    height: '120px' // Fixed height
                   }}
                 />
               )}
             </div>
 
             {/* Main Prompt */}
-            <div className="card">
+            <div className="card flex flex-col flex-1">
               <h3 className="text-sm font-medium mb-3 flex items-center justify-between cursor-pointer flex-shrink-0" onClick={() => toggleSection('main')}>
                 <span className="flex items-center gap-2">
                   💬 Main Prompt
@@ -292,7 +294,7 @@ const PromptEditor = ({ taskId, versionId }) => {
                   value={promptText}
                   onChange={(e) => setPromptText(e.target.value)}
                   placeholder="Enter prompt... (Use {{variable_name}} for variables)"
-                  className="w-full h-48 p-3 bg-transparent border-none text-sm font-mono"
+                  className="w-full h-full p-3 bg-transparent border-none text-sm font-mono flex-1"
                   style={{
                     color: 'var(--text-primary)',
                     fontFamily: 'SF Mono, Monaco, monospace',

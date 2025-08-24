@@ -1,0 +1,22 @@
+{
+  "_default": {},
+  "tasks": [
+    {
+      "id": "task-1",
+      "name": "Test Task for Screenshot",
+      "versions": [
+        {
+          "id": "v1",
+          "name": "Version 1",
+          "content": "Initial content",
+          "system_prompt": "You are a helpful assistant.",
+          "description": "A test version.",
+          "variables": {},
+          "createdAt": "2023-10-27T10:00:00Z",
+          "results": [],
+          "updatedAt": null
+        }
+      ]
+    }
+  ]
+}
