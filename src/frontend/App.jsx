@@ -67,6 +67,17 @@ function App() {
     const newUrl = `${window.location.pathname}?settings=llm-endpoints`;
     window.history.pushState({ view: 'settings' }, '', newUrl);
   };
+
+  const handleEditorClick = () => {
+    if (currentTask) {
+      setCurrentView('task-detail');
+      const newUrl = `${window.location.pathname}?task=${currentTask}`;
+      window.history.pushState({ taskId: currentTask, view: 'task-detail' }, '', newUrl);
+    } else {
+      setCurrentView('task-list');
+      window.history.pushState({ view: 'task-list' }, '', window.location.pathname);
+    }
+  };
   
   useEffect(() => {
     const handlePopState = (event) => {
@@ -118,11 +129,20 @@ function App() {
           <div className="app-logo">⚡</div>
           <span className="app-title">Prompt Manager</span>
           <span className="app-version">v1.0</span>
-          <span className="text-muted" style={{ marginLeft: '16px' }}>
-            {currentView === 'task-list' ? 'Tasks' : 
-             currentView === 'settings' ? 'Settings' :
-             'Editor'}
-          </span>
+          <div className="header-nav">
+            <span
+              className={`header-nav-item ${currentView !== 'settings' ? 'active' : ''}`}
+              onClick={handleEditorClick}
+            >
+              Editor
+            </span>
+            <span
+              className={`header-nav-item ${currentView === 'settings' ? 'active' : ''}`}
+              onClick={handleOpenSettings}
+            >
+              LLM Provider
+            </span>
+          </div>
         </div>
         
         <div className="header-right">

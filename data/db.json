@@ -6,15 +6,40 @@
       "versions": [
         {
           "id": "v1756006976768",
-          "content": "",
+          "content": "hi?",
           "system_prompt": "You are a helpful assistant.",
           "description": "",
           "name": "1",
           "variables": {},
           "createdAt": "2025-08-24T12:42:56.775664",
-          "results": []
+          "results": [],
+          "updatedAt": "2025-08-24T15:11:33.442281"
         }
       ]
+    },
+    "2": {
+      "id": "task-1756015897072",
+      "name": "2",
+      "versions": []
+    }
+  },
+  "settings": {
+    "1": {
+      "activeEndpointId": "llm-ep-0e591b70-8c74-4b05-95b1-0e145bdb7c7c",
+      "defaultEndpointId": "llm-ep-0e591b70-8c74-4b05-95b1-0e145bdb7c7c"
+    }
+  },
+  "llm_endpoints": {
+    "1": {
+      "id": "llm-ep-0e591b70-8c74-4b05-95b1-0e145bdb7c7c",
+      "name": "openrouter-test",
+      "baseUrl": "https://openrouter.ai/api/v1",
+      "apiKey": "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",
+      "defaultModel": "qwen/qwen3-coder:free",
+      "description": "테스트",
+      "contextSize": 128000,
+      "isDefault": true,
+      "createdAt": "2025-08-24T14:48:36.793200"
     }
   }
 }
