@@ -20,9 +20,13 @@ export default {
           900: '#001733',
         },
       },
-      fontFamily: {
+      /* fontFamily: {
         sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
         mono: ['Consolas', 'Monaco', 'monospace'],
+      }, */
+      fontFamily: {
+        sans: ['Pretendard', 'system-ui', '-apple-system', 'sans-serif'],
+        mono: ['Fira Code', 'Consolas', 'Monaco', 'monospace'],
       },
       spacing: {
         '72': '18rem',
