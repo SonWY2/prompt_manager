@@ -1,488 +1,519 @@
-import React, { useState, useEffect, useRef } from 'react';
+// src/frontend/components/prompt/PromptEditor.jsx
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useStore } from '../../store.jsx';
-import { apiUrl } from '../../utils/api';
-import VersionTimeline from './VersionTimeline.jsx';
-import VariableManager from './VariableManager.jsx';
-import Button from '../common/Button.jsx';
 
-function PromptEditor({ taskId, versionId }) {
-  const { 
-    tasks, 
-    versions, 
-    loadVersions,
-    addVersion,
-    updatePromptContent,
-    updateSystemPromptContent, // System Prompt 업데이트 함수 추가
-    savePromptContent,
-    deleteVersion,
-    getVersionDetail,
-    extractVariables,
-    updateVariables,
+const PromptEditor = ({ taskId, versionId }) => {
+  const {
+    tasks,
+    createVersion,
     setCurrentVersion,
-    currentSystemPrompt, // 현재 선택된 버전의 system prompt 상태 추가
-    isEditMode, // 전역 편집 모드 상태 사용
-    setIsEditMode, // 편집 모드 설정 함수
-    templateVariables,
-    renderPrompt,
-    callLLM
+    currentVersion,
+    updateVersion
   } = useStore();
   
-  const [promptContent, setPromptContent] = useState('');
-  const [systemPromptContent, setSystemPromptContent] = useState(''); // 로컬 system prompt 상태 추가
-  const [showPreview, setShowPreview] = useState(false);
-  const [renderedPrompt, setRenderedPrompt] = useState('');
-  const [variableValues, setVariableValues] = useState({});
-  const [versionInfo, setVersionInfo] = useState({
-    name: '',
-    description: ''
-  });
-  
-  // 태스크 변경 시 버전 로드 (강화된 디바운싱 및 중복 호출 방지)
-  const loadVersionsTimerRef = useRef(null);
-  const lastTaskIdRef = useRef(null);
-  
-  useEffect(() => {
-    if (taskId && taskId !== lastTaskIdRef.current) {
-      console.log('🔄 PromptEditor: 태스크 변경 감지:', { from: lastTaskIdRef.current, to: taskId });
-      
-      // 이전 타이머 취소
-      if (loadVersionsTimerRef.current) {
-        clearTimeout(loadVersionsTimerRef.current);
-      }
-      
-      // 새로운 타이머 설정
-      loadVersionsTimerRef.current = setTimeout(() => {
-        console.log('📦 PromptEditor: 버전 로드 실행:', taskId);
-        loadVersions(taskId);
-        loadVersionsTimerRef.current = null;
-      }, 200); // 200ms 디바운싱
-      
-      // 마지막 taskId 기록
-      lastTaskIdRef.current = taskId;
-    }
-    
-    // 컴포넌트 언마운트 시 정리
-    return () => {
-      if (loadVersionsTimerRef.current) {
-        clearTimeout(loadVersionsTimerRef.current);
-        loadVersionsTimerRef.current = null;
-      }
-    };
-  }, [taskId]); // loadVersions 의존성 제거
-  
-  // 버전 변경 시 프롬프트 내용 및 system prompt 설정
-  useEffect(() => {
-    if (versionId && versions.length > 0) {
-      const version = versions.find(v => v.id === versionId);
-      if (version) {
-        setPromptContent(version.content || '');
-        setSystemPromptContent(version.system_prompt || 'You are a helpful assistant.'); // system prompt 설정
-        setVersionInfo({
-          name: version.name || version.id,
-          description: version.description || ''
-        });
-        
-        // 프롬프트에서 변수 추출 및 값 초기화
-        const extractedVars = extractVariables(version.content || '');
-        setVariableValues(prev => {
-          const newValues = { ...prev };
-          extractedVars.forEach(varName => {
-            if (!newValues[varName]) {
-              newValues[varName] = '';
-            }
-          });
-          return newValues;
-        });
-      }
-    } else {
-      // 버전이 없는 경우에는 편집 모드 활성화 및 기본 system prompt 설정
-      setIsEditMode(true);
-      setSystemPromptContent('You are a helpful assistant.');
-    }
-  }, [versionId, versions, extractVariables, setIsEditMode]);
-  
-  // currentSystemPrompt 상태와 로컬 systemPromptContent 동기화
-  useEffect(() => {
-    setSystemPromptContent(currentSystemPrompt || 'You are a helpful assistant.');
-  }, [currentSystemPrompt]);
-  
-  // 프롬프트 미리보기 렌더링 (System Prompt 포함)
-  useEffect(() => {
-    if (showPreview) {
-      const rendered = renderPrompt(promptContent, variableValues);
-      const fullPreview = `**System Prompt:**\n${systemPromptContent}\n\n**User Prompt:**\n${rendered}`;
-      setRenderedPrompt(fullPreview);
-    }
-  }, [showPreview, promptContent, systemPromptContent, variableValues, renderPrompt]);
-  
-  // 변수 값 업데이트
-  const handleVariableChange = (varName, value, action = 'update') => {
-    if (action === 'add') {
-      // 새 변수 추가
-      setVariableValues(prev => ({
-        ...prev,
-        [varName]: value
-      }));
-      // 변수 목록 업데이트 호출
-      updateVariables(taskId, [...Object.keys(variableValues), varName]);
-    } 
-    else if (action === 'remove') {
-      // 변수 제거
-      setVariableValues(prev => {
-        const newValues = { ...prev };
-        delete newValues[varName];
-        return newValues;
-      });
-      // 변수 목록 업데이트 호출
-      updateVariables(taskId, Object.keys(variableValues).filter(v => v !== varName));
-    } 
-    else {
-      // 변수 값만 업데이트
-      setVariableValues(prev => ({
-        ...prev,
-        [varName]: value
-      }));
-    }
-  };
-  
-  // 버전 선택
-  const handleSelectVersion = (selectedVersionId) => {
-    setCurrentVersion(selectedVersionId);
-  };
-  
-  // 새 버전 생성
-  const handleCreateVersion = () => {
-    const newVersionId = `v${Date.now()}`;
-    addVersion(taskId, newVersionId, promptContent, systemPromptContent, versionInfo.description, versionInfo.name);
-  };
-  
-  // 버전 정보 업데이트
-  const handleVersionInfoChange = (key, value) => {
-    setVersionInfo(prev => ({
-      ...prev,
-      [key]: value
-    }));
-  };
-  
-  // LLM 호출
-  const handleExecute = async () => {
-    try {
-      await callLLM(taskId, versionId, variableValues, systemPromptContent);
-    } catch (error) {
-      console.error("Failed to execute prompt:", error);
-      alert("프롬프트 실행 중 오류가 발생했습니다.");
-    }
-  };
-  
-  // 태스크와 버전 정보 가져오기 - 다른 코드보다 먼저 정의
-  const currentTask = tasks[taskId];
-  const currentVersion = versions.find(v => v.id === versionId);
+  const [promptText, setPromptText] = useState('');
+  const [systemPrompt, setSystemPrompt] = useState('');
+  const [taskName, setTaskName] = useState('');
+  const [taskDescription, setTaskDescription] = useState('');
+  const [variables, setVariables] = useState({});
+  const [activeTab, setActiveTab] = useState('prompt'); // 'prompt' or 'variables'
+  const [isPreviewMode, setIsPreviewMode] = useState(false);
+  const [newVariable, setNewVariable] = useState({ name: '', value: '' });
+  const [isEditingName, setIsEditingName] = useState(false);
 
-  // 현재 태스크가 없는 경우
-  if (!taskId) {
+  const currentTask = taskId ? tasks[taskId] : null;
+  const currentVersionData = currentTask?.versions?.find(v => v.id === versionId);
+
+  useEffect(() => {
+    if (currentTask) {
+      setTaskName(currentTask.name || '');
+    }
+    if (currentVersionData) {
+      setPromptText(currentVersionData.content || '');
+      setSystemPrompt(currentVersionData.system_prompt || 'You are a helpfull AI Assistant');
+      setTaskDescription(currentVersionData.description || '');
+      setVariables(currentVersionData.variables || {});
+    }
+  }, [currentTask, currentVersionData]);
+
+  const extractedVariables = React.useMemo(() => {
+    const matches = promptText.match(/\{\{(\w+)\}\}/g) || [];
+    return [...new Set(matches.map(match => match.slice(2, -2)))];
+  }, [promptText]);
+
+  const handleSave = async () => {
+    if (!taskId || !versionId) return;
+    try {
+      await updateVersion(taskId, versionId, {
+        content: promptText,
+        system_prompt: systemPrompt,
+        description: taskDescription,
+        variables,
+      });
+    } catch (error) {
+      console.error('저장 실패:', error);
+    }
+  };
+
+  const handleSaveName = async () => {
+    if (!taskId || !taskName.trim()) return;
+    try {
+      // This should ideally be in the store as well
+      // For now, let's assume `updateTask` is still there for this purpose
+      // await updateTask(taskId, { name: taskName.trim() });
+      setIsEditingName(false);
+    } catch (error) {
+      console.error('이름 저장 실패:', error);
+    }
+  };
+
+  const handleNewVersion = async () => {
+    if (!taskId) return;
+    try {
+      const versionName = prompt('새 버전 이름을 입력하세요:');
+      if (versionName) {
+        await createVersion(taskId, versionName, promptText, systemPrompt, taskDescription, variables);
+      }
+    } catch (error) {
+      console.error('버전 생성 실패:', error);
+    }
+  };
+
+  const handleCopyVersion = async () => {
+    if (!taskId || !currentVersionData) return;
+    const newName = prompt(`Enter a name for the copied version:`, `${currentVersionData.name} (Copy)`);
+    if (newName) {
+      try {
+        await createVersion(
+          taskId,
+          newName,
+          currentVersionData.content,
+          currentVersionData.system_prompt,
+          currentVersionData.description,
+          currentVersionData.variables
+        );
+      } catch (error) {
+        console.error('Failed to copy version:', error);
+      }
+    }
+  };
+
+  const handleAddVariable = () => {
+    if (!newVariable.name.trim()) return;
+    setVariables(prev => ({ ...prev, [newVariable.name.trim()]: newVariable.value }));
+    setNewVariable({ name: '', value: '' });
+  };
+
+  const handleRemoveVariable = (variable) => {
+    setVariables(prev => {
+      const updated = { ...prev };
+      delete updated[variable];
+      return updated;
+    });
+  };
+
+  const renderPromptWithVariables = () => {
+    let rendered = promptText;
+    extractedVariables.forEach(variable => {
+      const value = variables[variable] || `{{${variable}}}`;
+      rendered = rendered.replace(new RegExp(`\{\{${variable}\}\}`, 'g'), value);
+    });
+    return rendered;
+  };
+
+  // --- Collapse and Resize Logic ---
+  const [collapsedSections, setCollapsedSections] = useState({
+    description: false,
+    system: false,
+    main: false,
+  });
+  const [heights, setHeights] = useState({
+    description: 80,
+    system: 96,
+  });
+  const [dragging, setDragging] = useState(null);
+  const editorContainerRef = useRef(null);
+
+  const toggleSection = (section) => {
+    setCollapsedSections(prev => ({ ...prev, [section]: !prev[section] }));
+  };
+
+  const onDragStart = (e, section) => {
+    e.preventDefault();
+    setDragging(section);
+  };
+
+  const onDragEnd = useCallback(() => {
+    setDragging(null);
+  }, []);
+
+  const onDrag = useCallback((e) => {
+    if (dragging === null || !editorContainerRef.current) return;
+    e.preventDefault();
+
+    const rect = editorContainerRef.current.getBoundingClientRect();
+    const y = e.clientY - rect.top;
+
+    if (dragging === 'description') {
+      const newHeight = y - 20; // Adjust for padding and header
+      if (newHeight > 40) {
+        setHeights(h => ({ ...h, description: newHeight }));
+      }
+    } else if (dragging === 'system') {
+      const descriptionHeight = collapsedSections.description ? 40 : heights.description;
+      const newHeight = y - descriptionHeight - 60; // Adjust for padding, headers, and divider
+      if (newHeight > 40) {
+        setHeights(h => ({ ...h, system: newHeight }));
+      }
+    }
+  }, [dragging, heights.description, collapsedSections.description]);
+
+  useEffect(() => {
+    if (dragging !== null) {
+      document.addEventListener('mousemove', onDrag);
+      document.addEventListener('mouseup', onDragEnd);
+    } else {
+      document.removeEventListener('mousemove', onDrag);
+      document.removeEventListener('mouseup', onDragEnd);
+    }
+    return () => {
+      document.removeEventListener('mousemove', onDrag);
+      document.removeEventListener('mouseup', onDragEnd);
+    };
+  }, [dragging, onDrag, onDragEnd]);
+  // --- End Logic ---
+
+  if (!currentTask) {
     return (
-      <div className="flex-1 flex items-center justify-center text-gray-500 dark:text-gray-400">
-        <div className="text-center">
-          <p className="mb-3">👈 왼쪽에서 태스크를 선택하거나 새 태스크를 생성하세요</p>
-        </div>
+      <div className="flex items-center justify-center h-full">
+        <p className="text-muted">Select a task to start editing</p>
       </div>
     );
   }
-  
-  // 버전이 없는 경우 새 버전 생성 안내 메시지 표시
-  if (versions.length === 0) {
-    return (
-      <div className="h-full flex flex-col">
-        {/* 헤더 */}
-        <div className="p-3 border-b border-gray-300 dark:border-gray-700 flex justify-between items-center">
-          <div>
-            <h2 className="text-lg font-semibold">{currentTask?.name || '태스크 이름'}</h2>
-            <div className="text-sm text-gray-500 dark:text-gray-400">아직 버전이 없습니다.</div>
-          </div>
-        </div>
-        
-        {/* 빈 상태 안내 */}
-        <div className="flex-1 flex items-center justify-center text-gray-500 dark:text-gray-400">
-          <div className="text-center">
-            <div className="text-6xl mb-4">📄</div>
-            <h3 className="text-lg font-medium mb-2">아직 버전이 없습니다.</h3>
-            <p className="mb-4">프롬프트를 작성하고 첫 번째 버전을 생성해보세요!</p>
-          </div>
-        </div>
-        
-        {/* 새 버전 생성 영역 */}
-        <div className="p-4 border-t border-gray-300 dark:border-gray-700">
-          <div className="space-y-3">
-            <div>
-              <label className="block text-sm font-medium mb-1">버전 이름 (선택사항)</label>
-              <input
-                type="text"
-                className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 dark:text-white"
-                placeholder="예: v1.0, 초기 버전, 영어 버전 (빈칸이면 자동생성)"
-                value={versionInfo.name}
-                onChange={(e) => handleVersionInfoChange('name', e.target.value)}
-              />
-            </div>
-            
-            <div>
-              <label className="block text-sm font-medium mb-1">설명 (선택사항)</label>
-              <input
-                type="text"
-                className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 dark:text-white"
-                placeholder="예: 변수 추가, 지시문 개선, 결과물 길이 제한 추가"
-                value={versionInfo.description}
-                onChange={(e) => handleVersionInfoChange('description', e.target.value)}
-              />
-            </div>
-            
-            <div>
-              <label className="block text-sm font-medium mb-1">System Prompt</label>
-              <textarea
-                className="w-full h-20 p-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 dark:text-white resize-none"
-                placeholder="System prompt를 입력하세요... (비워두면 기본값 사용)"
-                value={systemPromptContent}
-                onChange={(e) => setSystemPromptContent(e.target.value)}
-              />
-            </div>
-            
-            <div>
-              <label className="block text-sm font-medium mb-1">프롬프트 내용</label>
-              <textarea
-                className="w-full h-32 p-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 dark:text-white resize-none"
-                placeholder="프롬프트 내용을 입력하세요..."
-                value={promptContent}
-                onChange={(e) => setPromptContent(e.target.value)}
-              />
-            </div>
-            
-            <Button
-              variant="primary"
-              className="w-full"
-              onClick={handleCreateVersion}
-              disabled={!promptContent.trim()}
-            >
-              <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
-              </svg>
-              첫 번째 버전 생성
-            </Button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-  
+
   return (
-    <div className="h-full flex flex-col">
-      {/* 헤더 */}
-      <div className="p-3 border-b border-gray-300 dark:border-gray-700 flex justify-between items-center">
-        <div>
-          <h2 className="text-lg font-semibold">{currentTask?.name || '태스크 이름'}</h2>
-          <div className="flex gap-2 items-center">
-            <span className="text-sm text-gray-500 dark:text-gray-400">
-              {versionId ? `현재 버전: ${currentVersion?.name || versionId}` : '버전을 선택하세요'}
-            </span>
-            {currentVersion?.description && (
-              <span className="text-sm text-gray-500 dark:text-gray-400">- {currentVersion.description}</span>
+    <div className="h-full flex flex-col overflow-hidden">
+      {/* Header */}
+      <div className="panel-header">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-3">
+            {/* Task Name */}
+            {isEditingName ? (
+              <input
+                type="text"
+                value={taskName}
+                onChange={(e) => setTaskName(e.target.value)}
+                className="input text-lg font-semibold bg-transparent border-none p-0 focus:ring-0"
+                onBlur={handleSaveName}
+                onKeyPress={(e) => e.key === 'Enter' && handleSaveName()}
+                autoFocus
+              />
+            ) : (
+              <h2 
+                className="text-lg font-medium cursor-pointer hover:opacity-75 transition-opacity"
+                style={{ color: 'var(--text-primary)' }}
+                onClick={() => setIsEditingName(true)}
+                title="Click to edit name"
+              >
+                {currentTask.name} ✏️
+              </h2>
             )}
+            
+            <div className="px-2 py-1 rounded text-xs font-medium"
+                 style={{ 
+                   background: 'rgba(16, 185, 129, 0.2)', 
+                   color: 'var(--accent-success)' 
+                 }}>
+              Active
+            </div>
+          </div>
+          
+          <div className="flex gap-2">
+            <button className="btn btn-secondary" onClick={handleCopyVersion}>
+              📋 Copy
+            </button>
+            <button className="btn btn-primary" onClick={handleNewVersion}>
+              🌿 New Version
+            </button>
           </div>
         </div>
-        
-        <div className="flex gap-2">
-          <Button 
-            variant={showPreview ? 'primary' : 'default'}
-            onClick={() => setShowPreview(!showPreview)}
+
+        {/* Version Timeline */}
+        {currentTask.versions && currentTask.versions.length > 0 && (
+          <div className="version-timeline">
+            <div className="timeline-line"></div>
+            {currentTask.versions.map((version, index) => (
+              <div
+                key={version.id}
+                className="timeline-item"
+                onClick={() => setCurrentVersion(version.id)}
+              >
+                <div 
+                  className={`timeline-dot ${currentVersion === version.id ? 'active' : ''}`}
+                />
+                <div className={`timeline-label ${currentVersion === version.id ? 'active' : ''}`}>
+                  {version.name || `v${index + 1}`}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Tabs */}
+        <div className="tab-container mt-4">
+          <button 
+            className={`tab ${activeTab === 'prompt' ? 'active' : ''}`}
+            onClick={() => setActiveTab('prompt')}
           >
-            {showPreview ? '에디터 보기' : '미리보기'}
-          </Button>
-          <Button 
-            variant="success"
-            onClick={handleExecute}
-            disabled={!versionId}
+            Prompt
+          </button>
+          <button 
+            className={`tab ${activeTab === 'variables' ? 'active' : ''}`}
+            onClick={() => setActiveTab('variables')}
           >
-            실행
-          </Button>
-          {versionId && (
-            <Button
-              variant="danger"
-              onClick={async () => {
-                try {
-                  // 버전 정보 확인
-                  const versionInfo = await getVersionDetail(taskId, versionId);
-                  
-                  if (!versionInfo) {
-                    alert('삭제할 버전을 찾을 수 없습니다.');
-                    return;
-                  }
-                  
-                  // 삭제 확인
-                  if (window.confirm(`정말 이 버전(${versionInfo.name || versionInfo.id})을 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다!`)) {
-                    // 스토어의 deleteVersion 함수 사용
-                    await deleteVersion(taskId, versionId);
-                    console.log('버전 삭제 성공!');
-                    alert('버전이 삭제되었습니다.');
-                  }
-                } catch (error) {
-                  console.error('삭제 오류:', error);
-                  alert(`삭제 중 오류 발생: ${error.message}`);
-                }
-              }}
-            >
-              삭제
-            </Button>
-          )}
+            Variables ({extractedVariables.length})
+          </button>
         </div>
       </div>
-      
-      {/* 버전 타임라인 */}
-      <div className="border-b border-gray-300 dark:border-gray-700">
-        <VersionTimeline 
-          versions={versions}
-          currentVersion={versionId}
-          onSelectVersion={handleSelectVersion}
-        />
-      </div>
-      
-      {/* 에디터 / 미리보기 */}
-      <div className="flex-1 overflow-hidden">
-        {!showPreview ? (
-          <div className="h-full p-3">
-            {/* 버전 정보 필드 */}
-            {versionId && (
-              <div className="mb-3 grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-sm font-medium mb-1">버전 이름</label>
-                  <input
-                    type="text"
-                    value={versionInfo.name}
-                    onChange={(e) => handleVersionInfoChange('name', e.target.value)}
-                    className={`w-full p-2 border border-gray-300 dark:border-gray-600 rounded 
-                      ${isEditMode 
-                        ? 'bg-white dark:bg-gray-700 dark:text-white focus:ring-2 focus:ring-blue-500' 
-                        : 'bg-gray-100 dark:bg-gray-800 cursor-not-allowed'}`}
-                    placeholder="버전 이름..."
-                    disabled={!isEditMode}
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1">설명</label>
-                  <input
-                    type="text"
-                    value={versionInfo.description}
-                    onChange={(e) => handleVersionInfoChange('description', e.target.value)}
-                    className={`w-full p-2 border border-gray-300 dark:border-gray-600 rounded 
-                      ${isEditMode 
-                        ? 'bg-white dark:bg-gray-700 dark:text-white focus:ring-2 focus:ring-blue-500' 
-                        : 'bg-gray-100 dark:bg-gray-800 cursor-not-allowed'}`}
-                    placeholder="버전에 대한 설명..."
-                    disabled={!isEditMode}
-                  />
+
+      {/* Content */}
+      <div className="flex-1 overflow-y-auto p-4" style={{ height: 0 }}>
+        {!versionId ? (
+          <div className="flex items-center justify-center h-full">
+            <div className="text-center text-muted">
+              <div className="text-2xl mb-2">☝️</div>
+              <p>Select a version from the timeline above to start editing.</p>
+            </div>
+          </div>
+        ) : activeTab === 'prompt' ? (
+          /* Prompt Tab */
+          <div className="flex flex-col h-full" ref={editorContainerRef}>
+            {/* Description */}
+            <div className="card flex flex-col">
+              <h3 className="text-sm font-medium mb-3 flex items-center gap-2 cursor-pointer" onClick={() => toggleSection('description')}>
+                <span className="transform transition-transform duration-200">{collapsedSections.description ? '▶' : '▼'}</span>
+                📝 Prompt Description
+              </h3>
+              {!collapsedSections.description && (
+                <textarea
+                  value={taskDescription}
+                  onChange={(e) => setTaskDescription(e.target.value)}
+                  placeholder="Describe the purpose and usage of this prompt..."
+                  className="w-full p-3 bg-transparent border rounded text-sm"
+                  style={{
+                    height: `${heights.description}px`,
+                    borderColor: 'var(--border-primary)',
+                    color: 'var(--text-primary)',
+                    resize: 'none'
+                  }}
+                />
+              )}
+            </div>
+            
+            {!collapsedSections.description && (
+              <div 
+                className="w-full h-2 my-2 cursor-row-resize bg-gray-200 dark:bg-gray-700 hover:bg-blue-400 transition-colors"
+                onMouseDown={(e) => onDragStart(e, 'description')}
+              />
+            )}
+
+            {/* System Prompt */}
+            <div className="card flex flex-col">
+              <h3 className="text-sm font-medium mb-3 flex items-center gap-2 cursor-pointer" onClick={() => toggleSection('system')}>
+                <span className="transform transition-transform duration-200">{collapsedSections.system ? '▶' : '▼'}</span>
+                🤖 System Prompt
+              </h3>
+              {!collapsedSections.system && (
+                <textarea
+                  value={systemPrompt}
+                  onChange={(e) => setSystemPrompt(e.target.value)}
+                  placeholder="Define AI role and instructions..."
+                  className="w-full p-3 bg-transparent border rounded text-sm"
+                  style={{
+                    height: `${heights.system}px`,
+                    borderColor: 'var(--border-primary)',
+                    color: 'var(--text-primary)',
+                    resize: 'none'
+                  }}
+                />
+              )}
+            </div>
+
+            {!collapsedSections.system && (
+               <div 
+                className="w-full h-2 my-2 cursor-row-resize bg-gray-200 dark:bg-gray-700 hover:bg-blue-400 transition-colors"
+                onMouseDown={(e) => onDragStart(e, 'system')}
+              />
+            )}
+
+            {/* Main Prompt */}
+            <div className="card flex flex-col flex-1">
+              <h3 className="text-sm font-medium mb-3 flex items-center gap-2 cursor-pointer" onClick={() => toggleSection('main')}>
+                <span className="transform transition-transform duration-200">{collapsedSections.main ? '▶' : '▼'}</span>
+                💬 Main Prompt
+              </h3>
+              {!collapsedSections.main && (
+                <textarea
+                  value={promptText}
+                  onChange={(e) => setPromptText(e.target.value)}
+                  placeholder="Enter prompt... (Use {{variable_name}} for variables)"
+                  className="w-full h-full p-3 bg-transparent border-none text-sm font-mono flex-1"
+                  style={{
+                    color: 'var(--text-primary)',
+                    fontFamily: 'SF Mono, Monaco, monospace',
+                    lineHeight: '1.5',
+                    resize: 'none'
+                  }}
+                />
+              )}
+            </div>
+
+            {/* Preview */}
+            {isPreviewMode && (
+              <div className="card mt-4">
+                <h4 className="text-sm font-medium mb-3">Preview</h4>
+                
+                {systemPrompt && (
+                  <div className="mb-4 p-3 rounded border"
+                       style={{ 
+                         background: 'rgba(16, 185, 129, 0.1)',
+                         borderColor: 'var(--accent-success)'
+                       }}>
+                    <div className="text-xs mb-2" style={{ color: 'var(--accent-success)' }}>
+                      System:
+                    </div>
+                    <pre className="whitespace-pre-wrap text-sm" style={{ color: 'var(--text-secondary)' }}>
+                      {systemPrompt}
+                    </pre>
+                  </div>
+                )}
+                
+                <div className="p-3 rounded border" 
+                     style={{ 
+                       background: 'var(--bg-tertiary)',
+                       borderColor: 'var(--border-primary)'
+                     }}>
+                  <pre className="whitespace-pre-wrap text-sm font-mono" style={{ color: 'var(--text-secondary)' }}>
+                    {renderPromptWithVariables()}
+                  </pre>
                 </div>
               </div>
             )}
-            
-            {/* System Prompt 필드 */}
-            <div className="mb-3">
-              <label className="block text-sm font-medium mb-1">System Prompt</label>
-              <textarea
-                value={systemPromptContent}
-                onChange={(e) => {
-                  setSystemPromptContent(e.target.value);
-                  updateSystemPromptContent(e.target.value);
-                }}
-                className={`w-full h-20 p-2 border border-gray-300 dark:border-gray-600 rounded 
-                  ${isEditMode 
-                    ? 'bg-white dark:bg-gray-700 dark:text-white focus:ring-2 focus:ring-blue-500' 
-                    : 'bg-gray-100 dark:bg-gray-800 cursor-not-allowed'}`}
-                placeholder="System prompt를 입력하세요... (비워두면 기본값 사용)"
-                disabled={!isEditMode}
-              />
-            </div>
-            
-            <textarea
-              value={promptContent}
-              onChange={(e) => {
-                setPromptContent(e.target.value);
-                updatePromptContent(e.target.value);
-              }}
-              className={`w-full h-full p-3 border border-gray-300 dark:border-gray-600 rounded 
-                ${isEditMode 
-                  ? 'bg-white dark:bg-gray-700 dark:text-white focus:ring-2 focus:ring-blue-500' 
-                  : 'bg-gray-100 dark:bg-gray-800 cursor-not-allowed'}`}
-              placeholder="프롬프트를 작성하세요..."
-              disabled={!isEditMode}
-            />
           </div>
         ) : (
-          <div className="h-full p-4 overflow-y-auto bg-gray-50 dark:bg-gray-800">
-            <div className="bg-white dark:bg-gray-900 p-4 rounded shadow">
-              <pre className="whitespace-pre-wrap dark:text-white">{renderedPrompt}</pre>
+          /* Variables Tab */
+          <div className="space-y-4">
+            {/* Add Variable */}
+            <div className="card">
+              <h3 className="text-sm font-medium mb-3">Add Variable</h3>
+              <div className="space-y-3">
+                <input
+                  type="text"
+                  value={newVariable.name}
+                  onChange={(e) => setNewVariable(prev => ({ ...prev, name: e.target.value }))}
+                  className="input text-sm w-full"
+                  placeholder="Variable Name (e.g., topic, tone, audience)"
+                />
+                <div className="flex gap-2">
+                  <textarea
+                    value={newVariable.value}
+                    onChange={(e) => setNewVariable(prev => ({ ...prev, value: e.target.value }))}
+                    className="input text-sm flex-1"
+                    placeholder="Variable Value (supports multiline text, documents, etc.)"
+                    rows="3"
+                    style={{ resize: 'vertical', minHeight: '60px' }}
+                  />
+                  <button 
+                    className="btn btn-primary" 
+                    onClick={handleAddVariable}
+                    style={{ alignSelf: 'flex-start', minWidth: '60px' }}
+                  >
+                    Add
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Variable List */}
+            <div className="space-y-3">
+              {extractedVariables.length === 0 ? (
+                <div className="text-center py-8" style={{ color: 'var(--text-muted)' }}>
+                  <p>No variables in prompt.</p>
+                  <p className="text-xs mt-1">Use <code>{'{{'}variable_name{'}}'}</code> format in your prompt.</p>
+                </div>
+              ) : (
+                extractedVariables.map(variable => (
+                  <div key={variable} className="card">
+                    <div className="flex items-start gap-3">
+                      <div className="flex-shrink-0 pt-2">
+                        <span className="variable-badge">{`{{${variable}}}`}</span>
+                      </div>
+                      <div className="flex-1">
+                        <label className="block text-xs mb-1" style={{ color: 'var(--text-muted)' }}>
+                          {variable}
+                        </label>
+                        <textarea
+                          value={variables[variable] || ''}
+                          onChange={(e) => setVariables(prev => ({ ...prev, [variable]: e.target.value }))}
+                          className="w-full p-2 border rounded text-sm"
+                          style={{ 
+                            borderColor: 'var(--border-primary)',
+                            background: 'var(--bg-tertiary)',
+                            color: 'var(--text-primary)',
+                            resize: 'vertical',
+                            minHeight: '80px'
+                          }}
+                          placeholder={`Enter value for ${variable}... (supports multiline text)`}
+                          rows="3"
+                        />
+                      </div>
+                      <button
+                        className="flex-shrink-0 text-xs px-2 py-1 rounded transition-colors"
+                        style={{ 
+                          color: 'var(--accent-danger)',
+                          background: 'transparent',
+                          border: '1px solid var(--accent-danger)',
+                          marginTop: '20px'
+                        }}
+                        onClick={() => handleRemoveVariable(variable)}
+                        onMouseEnter={(e) => {
+                          e.target.style.background = 'var(--accent-danger)';
+                          e.target.style.color = 'white';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.target.style.background = 'transparent';
+                          e.target.style.color = 'var(--accent-danger)';
+                        }}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
           </div>
         )}
       </div>
-      
-      {/* 변수 관리자 */}
-      <div className="border-t border-gray-300 dark:border-gray-700">
-        <VariableManager 
-          variables={Object.keys(variableValues)}
-          values={variableValues}
-          onChange={handleVariableChange}
-        />
-      </div>
-      
-      {/* 하단 컨트롤 */}
-      <div className="p-3 border-t border-gray-300 dark:border-gray-700 flex justify-between">
-        {versionId ? (
-          isEditMode ? (
-            <>
-              <Button 
-                variant="outline"
-                onClick={() => setIsEditMode(false)}
-              >
-                취소
-              </Button>
-              <Button 
-                variant="primary"
-                onClick={() => {
-                  savePromptContent(taskId, versionId, promptContent, systemPromptContent, versionInfo);
-                  setIsEditMode(false);
-                }}
-              >
-                저장
-              </Button>
-            </>
-          ) : (
-            <>
-              <Button 
-                variant="default"
-                onClick={() => setIsEditMode(true)}
-              >
-                편집
-              </Button>
-              <Button 
-                variant="primary"
-                onClick={handleCreateVersion}
-              >
-                새 버전 생성
-              </Button>
-            </>
-          )
-        ) : (
-          <>
-            <div></div>
-            <Button 
-              variant="primary"
-              onClick={handleCreateVersion}
-              disabled={!promptContent.trim()}
-            >
-              새 버전 생성
-            </Button>
-          </>
-        )}
+
+      {/* Bottom Actions */}
+      <div className="flex gap-2 p-4 border-t" style={{ borderColor: 'var(--border-primary)' }}>
+        <button 
+          className="btn btn-secondary flex-1"
+          onClick={() => setIsPreviewMode(!isPreviewMode)}
+        >
+          👁️ {isPreviewMode ? 'Edit Mode' : 'Preview'}
+        </button>
+        <button
+          className="btn btn-primary flex-1"
+          onClick={handleSave}
+          disabled={!taskId || !versionId}
+        >
+          💾 Save
+        </button>
       </div>
     </div>
   );
-}
+};
 
 export default PromptEditor;

@@ -1,0 +1,20 @@
+{
+  "tasks": {
+    "1": {
+      "id": "task-1756006971611",
+      "name": "1",
+      "versions": [
+        {
+          "id": "v1756006976768",
+          "content": "",
+          "system_prompt": "You are a helpful assistant.",
+          "description": "",
+          "name": "1",
+          "variables": {},
+          "createdAt": "2025-08-24T12:42:56.775664",
+          "results": []
+        }
+      ]
+    }
+  }
+}

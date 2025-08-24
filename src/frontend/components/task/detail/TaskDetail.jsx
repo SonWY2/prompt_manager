@@ -4,26 +4,30 @@ import Button from '../../common/Button.jsx';
 import { apiUrl } from '../../../utils/api';
 
 function TaskDetail({ taskId }) {
-  const { tasks, versions, updateTask, addVersion, selectVersion, deleteVersion, getVersionDetail, loadVersions } = useStore();
+  const { tasks, versions, updateTask, addVersion, selectVersion, deleteVersion, getVersionDetail, loadVersions, initiateNewVersion } = useStore();
   
   const [isEditing, setIsEditing] = useState(false);
-  const [showVersionForm, setShowVersionForm] = useState(false);
-  const [taskName, setTaskName] = useState(tasks[taskId]?.name || '');
-  const [taskGroup, setTaskGroup] = useState(tasks[taskId]?.group || '기본 그룹');
-  const [newVersionName, setNewVersionName] = useState('');
-  const [newVersionDescription, setNewVersionDescription] = useState('');
-  const [newVersionContent, setNewVersionContent] = useState('');
-  
+  const [taskName, setTaskName] = useState('');
+  const [taskGroup, setTaskGroup] = useState('');
+
   const currentTask = tasks[taskId];
-  if (!currentTask) return null;
-  
+
+  useEffect(() => {
+    if (currentTask) {
+      setTaskName(currentTask.name);
+      setTaskGroup(currentTask.group);
+    }
+  }, [currentTask]);
+
   // 태스크가 변경될 때 버전 로드
   useEffect(() => {
     if (taskId) {
       loadVersions(taskId);
     }
   }, [taskId, loadVersions]);
-  
+
+  if (!currentTask) return null;
+
   const handleUpdateTask = () => {
     if (!taskName.trim()) return;
     
@@ -35,31 +39,6 @@ function TaskDetail({ taskId }) {
     setIsEditing(false);
   };
   
-  const handleCreateVersion = async () => {
-    if (!newVersionContent.trim()) return;
-    
-    try {
-      const versionId = `v${Date.now()}`;
-      const name = newVersionName.trim() || versionId;
-      
-      await addVersion(taskId, versionId, newVersionContent, newVersionDescription, name);
-      
-      // 버전 생성 후 명시적으로 버전 목록 새로고침
-      setTimeout(() => {
-        loadVersions(taskId);
-      }, 100);
-      
-      setNewVersionName('');
-      setNewVersionDescription('');
-      setNewVersionContent('');
-      setShowVersionForm(false);
-      
-      console.log('버전 생성 완료, 목록 새로고침 요청');
-    } catch (error) {
-      console.error('버전 생성 실패:', error);
-      alert('버전 생성 중 오류가 발생했습니다.');
-    }
-  };
 
   // 버전 선택 및 편집 모드로 전환
   const handleSelectVersionForEdit = (versionId) => {
@@ -141,63 +120,7 @@ function TaskDetail({ taskId }) {
           <h3 className="font-medium">버전 관리</h3>
         </div>
         
-        {showVersionForm && (
-          <div className="space-y-3 p-3 mb-3 border border-gray-300 dark:border-gray-700 rounded bg-gray-50 dark:bg-gray-800">
-            <div>
-              <label className="block text-sm font-medium mb-1">버전 이름 (선택사항)</label>
-              <input
-                type="text"
-                className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 dark:text-white"
-                placeholder="예: v1.0, 초기 버전, 영어 버전 (빈칸이면 자동생성)"
-                value={newVersionName}
-                onChange={(e) => setNewVersionName(e.target.value)}
-              />
-            </div>
-            
-            <div>
-              <label className="block text-sm font-medium mb-1">설명 (선택사항)</label>
-              <input
-                type="text"
-                className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 dark:text-white"
-                placeholder="예: 변수 추가, 지시문 개선, 결과물 길이 제한 추가"
-                value={newVersionDescription}
-                onChange={(e) => setNewVersionDescription(e.target.value)}
-              />
-            </div>
-            
-            <div>
-              <label className="block text-sm font-medium mb-1">프롬프트 내용</label>
-              <textarea
-                className="w-full h-32 p-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 dark:text-white resize-none"
-                placeholder="프롬프트 내용을 입력하세요..."
-                value={newVersionContent}
-                onChange={(e) => setNewVersionContent(e.target.value)}
-              />
-            </div>
-            
-            <div className="flex justify-end gap-2">
-              <Button
-                variant="outline"
-                size="small"
-                onClick={() => {
-                  setShowVersionForm(false);
-                  setNewVersionName('');
-                  setNewVersionDescription('');
-                  setNewVersionContent('');
-                }}
-              >
-                취소
-              </Button>
-              <Button
-                variant="primary"
-                size="small"
-                onClick={handleCreateVersion}
-              >
-                생성
-              </Button>
-            </div>
-          </div>
-        )}
+        
         
         {hasVersions ? (
           <div className="space-y-2">
@@ -321,7 +244,7 @@ function TaskDetail({ taskId }) {
           <Button
             variant="primary"
             className="w-full"
-            onClick={() => setShowVersionForm(!showVersionForm)}
+            onClick={() => initiateNewVersion(taskId)}
           >
             <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>

@@ -7,43 +7,13 @@ const PromptContext = createContext();
 export const useStore = () => useContext(PromptContext);
 
 export const PromptProvider = ({ children }) => {
-  // localStorage에서 초기값 동기적으로 로드
-  const getInitialGroups = () => {
-    try {
-      const savedGroups = localStorage.getItem('availableGroups');
-      console.log('getInitialGroups - localStorage에서 가져온 데이터:', savedGroups);
-      if (savedGroups) {
-        const parsed = JSON.parse(savedGroups);
-        console.log('getInitialGroups - 파싱된 그룹 데이터:', parsed);
-        return parsed;
-      }
-    } catch (error) {
-      console.error('Error loading groups from localStorage:', error);
-    }
-    const defaultGroups = ['기본 그룹', '마케팅', '고객 지원', '제품 개발', '기술 문서'];
-    console.log('getInitialGroups - 기본 그룹 사용:', defaultGroups);
-    return defaultGroups;
-  };
-  
-  const getInitialTasks = () => {
-    try {
-      const savedTasks = localStorage.getItem('tasks');
-      if (savedTasks) {
-        return JSON.parse(savedTasks);
-      }
-    } catch (error) {
-      console.error('Error loading tasks from localStorage:', error);
-    }
-    return {};
-  };
-  
   const getInitialCurrentTask = () => {
     // URL 기반 라우팅으로 인해 항상 null로 시작
     // App.jsx에서 URL을 처리하여 설정
     return null;
   };
   
-  const [tasks, setTasks] = useState(getInitialTasks);
+  const [tasks, setTasks] = useState({});
   const [currentTask, setCurrentTask] = useState(getInitialCurrentTask);
   const [versions, setVersions] = useState([]);
   const [currentVersion, setCurrentVersion] = useState(null);
@@ -52,7 +22,6 @@ export const PromptProvider = ({ children }) => {
   const [templateVariables, setTemplateVariables] = useState({});
   const [llmResults, setLLMResults] = useState([]);
   const [isDarkMode, setIsDarkMode] = useState(false);
-  const [availableGroups, setAvailableGroups] = useState(getInitialGroups);
   const [serverStatus, setServerStatus] = useState('disconnected'); // 서버 상태 추가
   
   // LLM Endpoints 상태 추가
@@ -332,229 +301,73 @@ export const PromptProvider = ({ children }) => {
   }, []);
   const loadTasks = useCallback(async () => {
     try {
-      // 서버에서 가져오기 시도
-      try {
-        const response = await fetch(apiUrl('/api/tasks'));
-        const data = await response.json();
-        if (data.tasks && data.tasks.length > 0) {
-          const tasksMap = data.tasks.reduce((acc, task) => {
-            acc[task.id] = task;
-            return acc;
-          }, {});
-          setTasks(tasksMap);
-          // 로컬 스토리지에도 저장
-          localStorage.setItem('tasks', JSON.stringify(tasksMap));
-          return;
-        }
-      } catch (error) {
-        console.warn('서버에서 태스크를 불러오지 못했습니다. 로컬 저장소를 확인합니다.', error);
-      }
-      
-      // 서버에서 데이터를 가져오지 못한 경우 이미 로드된 로컬 데이터 사용
-      console.log('로컬 스토리지에서 데이터를 사용합니다.');
-      
-      // 초기 로드 시 기본 그룹이 localStorage에 없으면 저장
-      const savedGroups = localStorage.getItem('availableGroups');
-      if (!savedGroups) {
-        localStorage.setItem('availableGroups', JSON.stringify(availableGroups));
+      const response = await fetch(apiUrl('/api/tasks'));
+      const data = await response.json();
+      if (data.tasks) {
+        const tasksMap = data.tasks.reduce((acc, task) => {
+          acc[task.id] = task;
+          return acc;
+        }, {});
+        setTasks(tasksMap);
       }
     } catch (error) {
       console.error('Error loading tasks:', error);
     }
   }, []);
   
-  const createTask = useCallback(async (name, group = '기본 그룹') => {
+  const createTask = useCallback(async (name) => {
     try {
       const taskId = `task-${Date.now()}`;
-      console.log('태스크 생성 시작:', { taskId, name, group });
-      
-      // 새로운 그룹이면 availableGroups에 추가
-      setAvailableGroups(prevGroups => {
-        if (!prevGroups.includes(group)) {
-          console.log('새로운 그룹 추가:', group);
-          const newGroups = [...prevGroups, group];
-          localStorage.setItem('availableGroups', JSON.stringify(newGroups));
-          return newGroups;
-        }
-        return prevGroups;
+      const response = await fetch(apiUrl('/api/tasks'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ taskId, name })
       });
       
-      try {
-        // API 호출 시도
-        const response = await fetch(apiUrl('/api/tasks'), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ taskId, name, group })
-        });
-        
-        if (!response.ok) {
-          console.warn('서버 응답이 정상적이지 않습니다. 로컬에만 저장합니다.');
-        } else {
-          console.log('서버에 태스크 생성 성공');
-        }
-      } catch (apiError) {
-        // API 호출 실패 시 로그만 남기고 계속 진행
-        console.warn('API 서버에 연결할 수 없습니다. 로컬에만 저장합니다.', apiError);
+      if (!response.ok) {
+        throw new Error('Failed to create task on the server');
       }
-      
-      // 서버 응답과 관계없이 로컬 상태 업데이트 진행
-      setTasks(prevTasks => {
-        const newTasks = {
-          ...prevTasks,
-          [taskId]: { id: taskId, name, group, versions: [] }
-        };
-        
-        console.log('로컬 상태 업데이트 완료:', newTasks);
-        
-        // 로컬 스토리지에 저장
-        localStorage.setItem('tasks', JSON.stringify(newTasks));
-        
-        return newTasks;
-      });
-      
-      // setCurrentTask(taskId); // TaskActions에서 처리하도록 제거
-      console.log('태스크 생성 완료:', taskId);
-      
-      return taskId;
+
+      const { task } = await response.json();
+
+      setTasks(prevTasks => ({
+        ...prevTasks,
+        [task.id]: task
+      }));
+
+      return task.id;
     } catch (error) {
       console.error('Error creating task:', error);
       throw error;
     }
   }, []);
   
-  const updateTask = useCallback(async (taskId, updates) => {
-    try {
-      // 서버 API 호출
-      try {
-        const response = await fetch(apiUrl(`/api/tasks/${taskId}`), {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(updates)
-        });
-        
-        if (!response.ok) {
-          console.warn('서버 태스크 업데이트 실패:', response.status, response.statusText);
-        }
-      } catch (apiError) {
-        console.warn(`태스크 ${taskId} API 업데이트 실패:`, apiError);
-        // API 실패는 무시하고 로컬 업데이트 진행
-      }
-      
-      // 상태 업데이트
-      setTasks(prevTasks => {
-        const newTasks = {
-          ...prevTasks,
-          [taskId]: {
-            ...prevTasks[taskId],
-            ...updates
-          }
-        };
-        
-        // 로컬 스토리지에 저장
-        localStorage.setItem('tasks', JSON.stringify(newTasks));
-        
-        return newTasks;
-      });
-      
-      return { success: true };
-    } catch (error) {
-      console.error('Error updating task:', error);
-      
-      // 에러가 발생해도 강제로 로컬 업데이트 시도
-      try {
-        setTasks(prevTasks => {
-          const newTasks = {
-            ...prevTasks,
-            [taskId]: {
-              ...prevTasks[taskId],
-              ...updates
-            }
-          };
-          
-          // 로컬 스토리지에 저장
-          localStorage.setItem('tasks', JSON.stringify(newTasks));
-          
-          return newTasks;
-        });
-        
-        return { success: true };
-      } catch (updateError) {
-        console.error('Forced update failed:', updateError);
-        throw error; // 최종적으로 실패한 경우만 오류 반환
-      }
-    }
-  }, []);
-  
-  // 태스크 삭제 기능
   const deleteTask = useCallback(async (taskId) => {
     try {
-      console.log('태스크 삭제 시작:', taskId);
-      
-      // 즉시 UI 업데이트 (낙관적 업데이트) - 먼저 상태 업데이트
-      const deletedTask = tasks[taskId]; // 로백을 위해 보관
-      
+      const response = await fetch(apiUrl(`/api/tasks/${taskId}`), {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to delete task on the server');
+      }
+
       setTasks(prevTasks => {
         const { [taskId]: deleted, ...newTasks } = prevTasks;
-        
-        // 로컬 스토리지에 즉시 저장
-        localStorage.setItem('tasks', JSON.stringify(newTasks));
-        
-        console.log('로컬 상태에서 태스크 삭제 완료:', taskId);
-        
         return newTasks;
       });
-      
-      // 삭제된 태스크가 현재 선택된 태스크인 경우 초기화
+
       if (currentTask === taskId) {
-        // 내부 상태 직접 업데이트 (래퍼 함수 사용 방지)
         setCurrentTask(null);
         setCurrentVersion(null);
         setVersions([]);
         setTemplateVariables([]);
-        // URL 기반 라우팅에서 App.jsx가 URL과 함께 처리하므로 localStorage 제거 삭제
-        console.log('현재 선택된 태스크가 삭제되어 상태 초기화');
       }
-      
-      // 백그라운드에서 서버 동기화 수행
-      try {
-        const response = await fetch(apiUrl(`/api/tasks/${taskId}`), {
-          method: 'DELETE',
-          headers: { 'Content-Type': 'application/json' }
-        });
-        
-        if (!response.ok) {
-          console.warn('서버 태스크 삭제 실패:', response.status, response.statusText);
-          return { 
-            success: true, 
-            serverSync: false,
-            message: '태스크가 로컬에서 삭제되었습니다. (서버 동기화 실패)' 
-          };
-        } else {
-          console.log('서버에서 태스크 삭제 성공:', taskId);
-          return { 
-            success: true, 
-            serverSync: true,
-            message: '태스크가 성공적으로 삭제되었습니다.' 
-          };
-        }
-      } catch (apiError) {
-        console.warn(`태스크 ${taskId} API 삭제 실패:`, apiError);
-        return { 
-          success: true, 
-          serverSync: false,
-          message: '태스크가 로컬에서 삭제되었습니다. (서버 연결 실패)' 
-        };
-      }
-      
     } catch (error) {
       console.error('Error deleting task:', error);
-      
-      // 예상치 못한 오류 시 로컬 상태 롤백 (옵션)
-      // 현재는 이미 UI가 업데이트되었으므로 롤백하지 않음
-      
       throw error;
     }
-  }, [currentTask, tasks]);
+  }, [currentTask]);
   
   // 템플릿 변수 관리 - loadVersions보다 먼저 정의
   const templateVariableLoadingRef = useRef(new Set()); // useRef로 변경
@@ -628,234 +441,77 @@ export const PromptProvider = ({ children }) => {
   // 버전 관리
   const versionsLoadingRef = useRef(new Set()); // useRef로 변경
   
-  const loadVersions = useCallback(async (taskId) => {
-    console.log('🔄 loadVersions 호출:', taskId);
-    
-    // 중복 호출 방지 (useRef 사용)
+  const loadVersions = useCallback(async (taskId, options = {}) => {
+    const { versionToSelect = null } = options;
     if (versionsLoadingRef.current.has(taskId)) {
-      console.log('⏸️ 버전 로드 이미 진행 중:', taskId);
       return;
     }
-    
-    // 로딩 상태 설정
     versionsLoadingRef.current.add(taskId);
-    
+
     try {
-      console.log(`📦 태스크의 버전 불러오는 중: ${taskId}`);
-      
-      let versionsToUse = [];
-      let useServerData = false;
-      
-      // 서버가 연결된 경우에만 서버에서 데이터 가져오기 시도
-      if (serverStatus === 'connected') {
-        try {
-          const data = await fetchFromAPI(apiUrl(`/api/tasks/${taskId}/versions`));
-          const serverVersions = data.versions || [];
-          
-          console.log(`📊 서버에서 불러온 버전 수: ${serverVersions.length}`);
-          console.log('🏷️ 서버 버전 ID 목록:', serverVersions.map(v => v.id));
-          
-          versionsToUse = serverVersions;
-          useServerData = true;
-          
-        } catch (apiError) {
-          console.warn('❌ 서버에서 버전을 불러올 수 없습니다. 로컬 데이터를 사용합니다.', apiError);
+      const data = await fetchFromAPI(apiUrl(`/api/tasks/${taskId}/versions`));
+      const serverVersions = data.versions || [];
+
+      setTasks(prevTasks => ({
+        ...prevTasks,
+        [taskId]: {
+          ...prevTasks[taskId],
+          versions: serverVersions
         }
-      } else {
-        console.log('🔌 서버가 연결되지 않아 로컬 데이터만 사용합니다.');
-      }
-      
-      // 서버 데이터를 가져오지 못한 경우 로컬 데이터 사용
-      if (!useServerData) {
-        // localStorage에서 직접 데이터 읽기
-        try {
-          const savedTasks = localStorage.getItem('tasks');
-          if (savedTasks) {
-            const tasksData = JSON.parse(savedTasks);
-            const task = tasksData[taskId];
-            if (task && task.versions && task.versions.length > 0) {
-              versionsToUse = task.versions;
-              console.log(`💾 로컬에서 불러온 버전 수: ${versionsToUse.length}`);
-              console.log('🏷️ 로컬 버전 ID 목록:', versionsToUse.map(v => v.id));
-            }
-          }
-        } catch (storageError) {
-          console.warn('❌ localStorage에서 데이터를 읽을 수 없습니다:', storageError);
-        }
-        
-        if (versionsToUse.length === 0) {
-          console.log('🙅 로컬에도 버전이 없습니다.');
-        }
-      }
-      
-      // 버전 목록 설정
-      setVersions(versionsToUse);
-      
-      // 현재 버전 및 편집 모드 설정
-      if (versionsToUse.length > 0) {
-        setCurrentVersion(versionsToUse[0].id);
-        setCurrentSystemPrompt(versionsToUse[0].system_prompt || 'You are a helpful assistant.'); // system prompt 설정
-        setIsEditMode(false); // 버전 로드 시 기본적으로 읽기 모드로 설정
-        console.log(`✅ 현재 버전 설정: ${versionsToUse[0].id}`);
+      }));
+
+      setVersions(serverVersions); // Keep this for other components that might use it directly
+
+      if (serverVersions.length > 0) {
+        setCurrentVersion(versionToSelect);
+        setCurrentSystemPrompt('You are a helpful assistant.');
+        setIsEditMode(false);
+        loadTemplateVariables(taskId);
       } else {
         setCurrentVersion(null);
-        setCurrentSystemPrompt('You are a helpful assistant.'); // 기본 system prompt 설정
-        setIsEditMode(true); // 버전이 없으면 편집 모드로 설정
-        console.log('✏️ 버전이 없어 편집 모드로 설정');
-      }
-      
-      // 서버 데이터를 사용한 경우 로컬 스토리지도 동기화
-      if (useServerData && versionsToUse.length > 0) {
-        try {
-          const savedTasks = localStorage.getItem('tasks');
-          const tasksData = savedTasks ? JSON.parse(savedTasks) : {};
-          const task = tasksData[taskId];
-          
-          if (task) {
-            const updatedTask = {
-              ...task,
-              versions: versionsToUse
-            };
-            
-            const updatedTasks = {
-              ...tasksData,
-              [taskId]: updatedTask
-            };
-            
-            localStorage.setItem('tasks', JSON.stringify(updatedTasks));
-            
-            // 메모리 상태도 업데이트
-            setTasks(updatedTasks);
-          }
-        } catch (storageError) {
-          console.warn('❌ localStorage 동기화 실패:', storageError);
-        }
-      }
-      
-      // 템플릿 변수 로드 (버전이 있고 이미 로딩 중이 아닌 경우에만)
-      if (versionsToUse.length > 0 && !templateVariableLoadingRef.current.has(taskId)) {
-        console.log('🔎 템플릿 변수 로드 예약:', taskId);
-        // 더 긴 디바운싱 적용
-        setTimeout(() => {
-          // 다시 한 번 체크해서 중복 호출 방지
-          if (!templateVariableLoadingRef.current.has(taskId)) {
-            loadTemplateVariables(taskId);
-          }
-        }, 500); // 500ms로 더 늘림
-      } else {
-        console.log('🙅 버전이 없거나 이미 로딩 중이어서 템플릿 변수 로드를 건너뛱니다:', { 
-          taskId, 
-          versionsCount: versionsToUse.length,
-          alreadyLoading: templateVariableLoadingRef.current.has(taskId)
-        });
+        setCurrentSystemPrompt('You are a helpful assistant.');
+        setIsEditMode(true);
         setTemplateVariables([]);
       }
-      
     } catch (error) {
-      console.error('❌ Error loading versions:', error);
-      // 최종 fallback: 빈 상태로 설정
+      console.error('Error loading versions:', error);
       setVersions([]);
       setCurrentVersion(null);
       setIsEditMode(true);
     } finally {
-      // 로딩 상태 해제 (useRef 사용)
       versionsLoadingRef.current.delete(taskId);
-      console.log('🏁 버전 로드 완료:', taskId);
     }
-  }, [serverStatus]); // 의존성 최소화 - tasks, loadTemplateVariables 제거
+  }, [loadTemplateVariables]);
   
-  const addVersion = useCallback(async (taskId, versionId, content, systemPromptContent = 'You are a helpful assistant.', description = '', name = '') => {
+  const createVersion = useCallback(async (taskId, name, content, systemPrompt, description, variables) => {
     try {
-      // 실제 버전 이름 처리: 비어있으면 자동 생성되는 명명 규칙 적용
-      const displayName = name.trim() || `버전 ${new Date().toLocaleString('ko-KR', {
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit'
-      })}`.replace(/\. /g, '.');
-      
-      console.log(`버전 추가 시작: ID=${versionId}, 이름=${displayName}`);
-      console.log('버전 내용:', { taskId, versionId, content: content.substring(0, 100) + '...', description, name: displayName });
-      
-      // 서버에 버전 추가 요청
-      try {
-        const response = await fetch(apiUrl(`/api/tasks/${taskId}/versions`), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            versionId,
-            content,
-            system_prompt: systemPromptContent,
-            description,
-            name: displayName
-          })
-        });
-        
-        if (!response.ok) {
-          const errorText = await response.text();
-          console.error('서버 버전 추가 실패:', response.status, response.statusText, errorText);
-          throw new Error(`서버 오류: ${response.status} ${response.statusText}`);
-        }
-        
-        console.log('서버에 버전 추가 성공');
-      } catch (apiError) {
-        console.error('API 호출 실패:', apiError);
-        // 서버 실패 시에도 로컬 상태는 업데이트 (낙관적 업데이트)
-        console.warn('서버 연결 실패, 로컬에만 저장합니다.');
-      }
-      
-      // 로컬 상태 업데이트
+      const versionId = `v${Date.now()}`;
       const newVersion = {
-        id: versionId,
+        versionId: versionId, // The backend expects versionId
+        name,
         content,
-        system_prompt: systemPromptContent,
+        system_prompt: systemPrompt,
         description,
-        name: displayName,
-        createdAt: new Date().toISOString(),
-        results: []
+        variables,
       };
-      
-      // 버전 목록 업데이트
-      setVersions(prev => {
-        const newVersions = [newVersion, ...prev];
-        console.log('버전 목록 업데이트:', newVersions.map(v => ({ id: v.id, name: v.name })));
-        return newVersions;
+
+      const response = await fetch(apiUrl(`/api/tasks/${taskId}/versions`), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newVersion),
       });
-      
-      // 태스크 내 버전 목록도 동기화
-      setTasks(prev => {
-        const task = prev[taskId];
-        if (!task) return prev;
-        
-        const updatedTask = {
-          ...task,
-          versions: [newVersion, ...(task.versions || [])]
-        };
-        
-        const updatedTasks = {
-          ...prev,
-          [taskId]: updatedTask
-        };
-        
-        // 로컬 스토리지에 저장
-        localStorage.setItem('tasks', JSON.stringify(updatedTasks));
-        
-        return updatedTasks;
-      });
-      
-      // 새로 생성된 버전을 현재 버전으로 설정
-      setCurrentVersion(versionId);
-      setCurrentSystemPrompt(systemPromptContent); // 새 버전의 system prompt 설정
-      setIsEditMode(false); // 새 버전 생성 후 읽기 모드로 전환
-      
-      console.log('버전 추가 완료:', versionId);
-      return { success: true, versionId, name: displayName };
+
+      if (!response.ok) {
+        throw new Error('Failed to create version on the server');
+      }
+
+      // After creating, reload the versions to update the UI
+      loadVersions(taskId);
+
     } catch (error) {
-      console.error('Error adding version:', error);
-      throw error; // 에러를 상위로 전파
+      console.error('Error creating version:', error);
     }
-  }, []);
+  }, [loadVersions]);
   
   // 버전 선택 및 편집 모드 설정
   const selectVersion = useCallback((versionId, editMode = false) => {
@@ -869,82 +525,27 @@ export const PromptProvider = ({ children }) => {
     }
   }, [versions]);
   
-  const updatePromptContent = useCallback((content) => {
-    setVersions(prev => 
-      prev.map(v => 
-        v.id === currentVersion 
-          ? { ...v, content, isDirty: true }
-          : v
-      )
-    );
-  }, [currentVersion]);
-  
-  // System Prompt 내용 업데이트 함수
-  const updateSystemPromptContent = useCallback((systemPromptContent) => {
-    setCurrentSystemPrompt(systemPromptContent);
-    setVersions(prev => 
-      prev.map(v => 
-        v.id === currentVersion 
-          ? { ...v, system_prompt: systemPromptContent, isDirty: true }
-          : v
-      )
-    );
-  }, [currentVersion]);
-  
-  const savePromptContent = useCallback(async (taskId, versionId, content, systemPromptContent, versionInfo = {}) => {
+  const updateVersion = useCallback(async (taskId, versionId, updates) => {
     try {
-      // 서버 API를 호출하여 버전 내용 저장
-      await fetch(apiUrl(`/api/tasks/${taskId}/versions/${versionId}`), {
+      const response = await fetch(apiUrl(`/api/tasks/${taskId}/versions/${versionId}`), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content, system_prompt: systemPromptContent, ...versionInfo })
+        body: JSON.stringify(updates),
       });
-      
-      // 상태 업데이트
-      setVersions(prev => 
-        prev.map(v => 
-          v.id === versionId
-            ? { 
-                ...v, 
-                content, 
-                system_prompt: systemPromptContent,
-                name: versionInfo.name || v.name,
-                description: versionInfo.description || v.description,
-                isDirty: false 
-              }
-            : v
-        )
-      );
-      
-      // 태스크 내 버전 업데이트
-      setTasks(prev => {
-        const task = prev[taskId];
-        if (!task) return prev;
-        
-        const updatedVersions = task.versions.map(v => 
-          v.id === versionId ? { 
-            ...v, 
-            content,
-            system_prompt: systemPromptContent,
-            name: versionInfo.name || v.name,
-            description: versionInfo.description || v.description, 
-          } : v
-        );
-        
-        return {
-          ...prev,
-          [taskId]: {
-            ...task,
-            versions: updatedVersions
-          }
-        };
-      });
-      
-      setIsEditMode(false); // 저장 후 읽기 모드로 전환
+
+      if (!response.ok) {
+        throw new Error('Failed to update version on the server');
+      }
+
+      // After a successful update, refetch the versions to ensure UI is in sync
+      // Pass the current versionId to stay on the same version view
+      loadVersions(taskId, { versionToSelect: versionId });
+
     } catch (error) {
-      console.error('Error saving prompt content:', error);
+      console.error('Error updating version:', error);
+      // Optionally, show an error message to the user
     }
-  }, []);
+  }, [loadVersions]);
   
   // 버전 상세 정보 확인
   const getVersionDetail = useCallback(async (taskId, versionId) => {
@@ -967,124 +568,35 @@ export const PromptProvider = ({ children }) => {
     }
   }, [versions]);
   
-  // 버전 삭제 - 로컬 모드 지원 (서버 없이도 작동)
   const deleteVersion = useCallback(async (taskId, versionId) => {
     try {
-      console.log('버전 삭제 요청:', { taskId, versionId });
-      
-      // 먼저 로컬에서 버전 존재 확인
-      const localVersion = versions.find(v => v.id === versionId);
-      if (!localVersion) {
-        console.error(`삭제할 버전이 로컬에 존재하지 않습니다: ${versionId}`);
-        throw new Error('삭제할 버전을 찾을 수 없습니다.');
-      }
-      
-      console.log('삭제할 버전 확인됨 (로컬):', localVersion);
-      
-      // 서버 연결 시도 (선택적) - 실패해도 로컬 삭제는 진행
-      let serverDeleteSuccess = false;
-      try {
-        console.log('서버 삭제 시도 중...');
-        
-        const apiEndpoint = `/api/tasks/${taskId}/versions/${versionId}`;
-        const fullUrl = apiUrl(apiEndpoint);
-        
-        const response = await fetch(fullUrl, {
-          method: 'DELETE',
-          headers: { 'Content-Type': 'application/json' },
-          signal: AbortSignal.timeout(5000) // 5초 타임아웃으로 단축
-        });
-        
-        if (response.ok) {
-          const result = await response.json();
-          console.log('서버 삭제 성공:', result);
-          serverDeleteSuccess = true;
-        } else {
-          console.warn(`서버 삭제 실패: ${response.status} ${response.statusText}`);
-        }
-      } catch (serverError) {
-        console.warn('서버 삭제 실패 (로컬 삭제는 계속 진행):', serverError.message);
-      }
-      
-      // 로컬 상태 업데이트 (서버 성공 여부와 관계없이 항상 실행)
-      console.log('로컬 상태 업데이트 시작...');
-      
-      // 버전 목록에서 제거
-      setVersions(prev => {
-        const filtered = prev.filter(v => v.id !== versionId);
-        console.log(`버전 목록 업데이트: ${prev.length} -> ${filtered.length}`);
-        return filtered;
+      const response = await fetch(apiUrl(`/api/tasks/${taskId}/versions/${versionId}`), {
+        method: 'DELETE',
       });
-      
-      // 현재 선택된 버전이 삭제된 경우 변경
-      if (currentVersion === versionId) {
-        console.log('현재 선택된 버전이 삭제되었습니다. 다른 버전 선택');
-        
-        const remainingVersions = versions.filter(v => v.id !== versionId);
-        if (remainingVersions.length > 0) {
-          console.log('다음 버전으로 선택:', remainingVersions[0].id);
-          setCurrentVersion(remainingVersions[0].id);
-          setCurrentSystemPrompt(remainingVersions[0].system_prompt || 'You are a helpful assistant.');
-        } else {
-          console.log('버전이 더 이상 없습니다.');
-          setCurrentVersion(null);
-          setCurrentSystemPrompt('You are a helpful assistant.');
-        }
+
+      if (!response.ok) {
+        throw new Error('Failed to delete version on the server');
       }
-      
-      // 태스크 데이터에서도 버전 제거
-      setTasks(prev => {
-        const task = prev[taskId];
-        if (!task) {
-          console.log('태스크를 찾을 수 없습니다:', taskId);
-          return prev;
-        }
-        
-        const updatedTask = {
-          ...task,
-          versions: (task.versions || []).filter(v => v.id !== versionId)
-        };
-        
-        console.log(`태스크 업데이트: ${task.versions?.length || 0} -> ${updatedTask.versions.length} 버전`);
-        
-        const updatedTasks = {
-          ...prev,
-          [taskId]: updatedTask
-        };
-        
-        // 로컬 스토리지에 저장
-        try {
-          localStorage.setItem('tasks', JSON.stringify(updatedTasks));
-          console.log('로컬 스토리지 저장 성공');
-        } catch (storageError) {
-          console.error('로컬 스토리지 저장 실패:', storageError);
-        }
-        
-        return updatedTasks;
-      });
-      
-      console.log('로컬 버전 삭제 완료');
-      
-      // 상태 새로고침 (선택적)
-      setTimeout(() => {
-        console.log('버전 목록 새로고침...');
-        loadVersions(taskId);
-      }, 300);
-      
-      // 결과 반환
-      return {
-        success: true,
-        serverSync: serverDeleteSuccess,
-        message: serverDeleteSuccess 
-          ? '버전이 성공적으로 삭제되었습니다.' 
-          : '버전이 로컬에서 삭제되었습니다. (서버 동기화 실패)'
-      };
-      
+
+      // Refetch versions for the task to update the UI
+      loadVersions(taskId);
+
     } catch (error) {
-      console.error('버전 삭제 오류:', error);
+      console.error('Error deleting version:', error);
       throw error;
     }
-  }, [currentVersion, versions, loadVersions, apiUrl]);
+  }, [loadVersions]);
+
+  const initiateNewVersion = useCallback((taskId) => {
+    if (!taskId) {
+      console.error("Cannot initiate new version without a task ID.");
+      return;
+    }
+    console.log(`Initiating new version for task: ${taskId}`);
+    // By setting the version to a special string and forcing edit mode,
+    // we can let the PromptEditor know that it should create a new version on save.
+    selectVersion('new-version', true);
+  }, [selectVersion]);
   
   const updateVariables = useCallback(async (taskId, variables) => {
     try {
@@ -1187,107 +699,6 @@ export const PromptProvider = ({ children }) => {
     }
   }, []);
   
-  // 그룹 추가 기능
-  const addGroup = useCallback(async (groupName) => {
-    try {
-      if (!groupName || !groupName.trim()) {
-        throw new Error('그룹 이름이 비어있습니다.');
-      }
-      
-      const trimmedName = groupName.trim();
-      
-      // 함수형 업데이트로 최신 상태 참조
-      return new Promise((resolve, reject) => {
-        setAvailableGroups(prevGroups => {
-          // 중복 체크
-          if (prevGroups.includes(trimmedName)) {
-            reject(new Error('이미 존재하는 그룹 이름입니다.'));
-            return prevGroups; // 기존 상태 유지
-          }
-          
-          // 새 그룹 추가
-          const newGroups = [...prevGroups, trimmedName];
-          
-          // 로컬 스토리지에 저장
-          localStorage.setItem('availableGroups', JSON.stringify(newGroups));
-          
-          // 성공 알림
-          resolve({ success: true, message: `'${trimmedName}' 그룹이 추가되었습니다.` });
-          
-          return newGroups;
-        });
-      });
-      
-    } catch (error) {
-      console.error('Error adding group:', error);
-      throw error;
-    }
-  }, []);
-  
-  // 그룹 삭제 기능
-  const deleteGroup = useCallback(async (groupName) => {
-    try {
-      console.log('=== 그룹 삭제 시작 ===');
-      console.log('삭제할 그룹:', groupName);
-      console.log('삭제 전 availableGroups:', availableGroups);
-      
-      // 해당 그룹에 속한 태스크 확인
-      const tasksInGroup = Object.entries(tasks).filter(([_, task]) => task.group === groupName);
-      console.log('그룹에 속한 태스크 수:', tasksInGroup.length);
-      
-      // 그룹에 속한 태스크들을 기본 그룹으로 이동
-      if (tasksInGroup.length > 0) {
-        const updatedTasks = { ...tasks };
-        tasksInGroup.forEach(([taskId, task]) => {
-          updatedTasks[taskId] = { ...task, group: '기본 그룹' };
-        });
-        setTasks(updatedTasks);
-        localStorage.setItem('tasks', JSON.stringify(updatedTasks));
-        console.log('태스크들을 기본 그룹으로 이동 완료');
-      }
-      
-      // availableGroups에서 즉시 삭제
-      setAvailableGroups(prevGroups => {
-        const newGroups = prevGroups.filter(group => group !== groupName);
-        console.log('새로운 그룹 목록:', newGroups);
-        
-        // 로컬 스토리지에 즉시 저장
-        localStorage.setItem('availableGroups', JSON.stringify(newGroups));
-        
-        return newGroups;
-      });
-      
-      // 서버 API 호출
-      try {
-        const response = await fetch(apiUrl('/api/groups/' + encodeURIComponent(groupName)), {
-          method: 'DELETE'
-        });
-        
-        if (response.ok) {
-          const data = await response.json();
-          console.log('서버 그룹 삭제 성공:', data);
-        } else {
-          console.warn('서버 그룹 삭제 실패:', response.status, response.statusText);
-        }
-      } catch (apiError) {
-        console.warn('API 서버에 연결할 수 없습니다. 로컬에만 저장합니다.', apiError);
-      }
-      
-      console.log('=== 그룹 삭제 완료 ===');
-      return { success: true, message: `'${groupName}' 그룹이 삭제되었습니다.` };
-    } catch (error) {
-      console.error('Error deleting group:', error);
-      
-      // 에러가 발생해도 강제로 삭제 시도
-      setAvailableGroups(prevGroups => {
-        const newGroups = prevGroups.filter(group => group !== groupName);
-        localStorage.setItem('availableGroups', JSON.stringify(newGroups));
-        return newGroups;
-      });
-      
-      return { success: false, message: `오류가 발생했지만 '${groupName}' 그룹이 삭제되었습니다.` };
-    }
-  }, [tasks, availableGroups]);
   
   // 테마 설정
   const toggleDarkMode = useCallback(() => {
@@ -1310,9 +721,7 @@ export const PromptProvider = ({ children }) => {
       templateVariables,
       llmResults,
       isDarkMode,
-      availableGroups,
       serverStatus, // 서버 상태 추가
-      setAvailableGroups,
       
       // LLM Endpoints 상태 추가
       llmEndpoints,
@@ -1328,7 +737,6 @@ export const PromptProvider = ({ children }) => {
       loadTasks,
       checkServerStatus, // 서버 상태 체크 함수 추가
       createTask,
-      updateTask,
       deleteTask,
       setCurrentTask: (taskId) => {
         console.log('currentTask 설정:', taskId);
@@ -1336,14 +744,13 @@ export const PromptProvider = ({ children }) => {
         // URL 기반 라우팅에서 App.jsx가 URL과 함께 관리하므로 localStorage 저장 제거
       },
       loadVersions,
-      addVersion,
+      createVersion,
       setCurrentVersion,
       selectVersion,
       setIsEditMode,
-      updatePromptContent,
-      updateSystemPromptContent, // System Prompt 업데이트 함수 추가
-      savePromptContent,
+      updateVersion,
       deleteVersion,
+      initiateNewVersion, // Add this line
       getVersionDetail,
       loadTemplateVariables,
       updateVariables,
@@ -1353,8 +760,6 @@ export const PromptProvider = ({ children }) => {
       getVersionResults,
       compareVersions,
       toggleDarkMode,
-      deleteGroup,
-      addGroup,
       
       // LLM Endpoints 관리 함수 추가
       loadLlmEndpoints,

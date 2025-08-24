@@ -1,236 +1,179 @@
-import React, { useState, useEffect } from 'react';
+// src/frontend/components/result/ResultViewer.jsx
+import React, { useState } from 'react';
 import { useStore } from '../../store.jsx';
-import ResultHistory from './ResultHistory.jsx';
-import ComparisonView from './ComparisonView.jsx';
-import MetricsDisplay from './MetricsDisplay.jsx';
-import Tabs from '../common/Tabs.jsx';
-import Button from '../common/Button.jsx';
 
-function ResultViewer({ taskId, versionId }) {
-  const { 
-    tasks, 
-    versions, // versions 가져오기
-    llmEndpoints, // llmEndpoints 가져오기
-    historyFilters, // historyFilters 가져오기
-    setHistoryFilters, // setHistoryFilters 가져오기
-    getFilteredResults, // 필터링된 결과 가져오기
-    getVersionResults, 
-    compareVersions
-  } = useStore();
+const ResultViewer = ({ taskId, versionId }) => {
+  const { tasks } = useStore();
+  const [activeTab, setActiveTab] = useState('response'); // response, history, comparison, metrics
   
-  const [activeTab, setActiveTab] = useState('latest');
-  const [results, setResults] = useState([]);
-  const [selectedResult, setSelectedResult] = useState(null);
-  const [comparedResults, setComparedResults] = useState(null);
-  
-  // 결과 데이터 로드
-  useEffect(() => {
-    if (taskId && versionId) {
-      const versionResults = getVersionResults(taskId, versionId);
-      
-      // 'latest' 탭에서는 현재 버전의 결과 사용
-      if (versionResults && versionResults.length > 0) {
-        setSelectedResult(versionResults[0]);
-      } else {
-        setSelectedResult(null);
-      }
-    }
-  }, [taskId, versionId, getVersionResults]);
+  const currentTask = taskId ? tasks[taskId] : null;
+  const currentVersion = currentTask?.versions?.[versionId];
 
-  // historyFilters 또는 tasks가 변경될 때마다 필터링된 결과 업데이트
-  useEffect(() => {
-    if (activeTab === 'history') {
-      const filtered = getFilteredResults();
-      setResults(filtered);
-    }
-  }, [activeTab, getFilteredResults]);
-  
-  // 탭 정의
-  const tabs = [
-    { id: 'latest', label: '최신 결과' },
-    { id: 'history', label: '이력' },
-    { id: 'compare', label: '비교' },
-    { id: 'metrics', label: '메트릭' },
-  ];
-  
-  // 결과가 없는 경우
-  if (!taskId || !versionId) {
+  // Mock data for demonstration
+  const mockResult = {
+    content: "# 생성형 AI가 중소기업에 가져올 혁신적인 변화\n\n안녕하세요, 사업을 운영하시는 대표님들! 오늘은 최근 화제가 되고 있는 생성형 AI가 우리 비즈니스에 어떤 실질적인 도움을 줄 수 있는지 함께 알아보겠습니다.\n\n## 1. 마케팅 콘텐츠 제작의 효율화\n\n이제 더 이상 비싼 비용을 들여 외주를 맡기지 않아도 됩니다. 생성형 AI를 활용하면 블로그 포스트, 소셜 미디어 콘텐츠 등을 빠르고 효율적으로 제작할 수 있습니다...\n\n## 2. 고객 서비스 자동화\n\n24시간 고객 응대가 가능한 AI 챗봇을 도입하여 고객 만족도를 높이고...",
+    responseTime: "2.3s",
+    timestamp: "2024.03.15 14:32",
+    model: "GPT-4",
+    tokens: 1247,
+    estimatedCost: "$0.037"
+  };
+
+  if (!currentTask) {
     return (
-      <div className="h-full flex items-center justify-center text-gray-500 dark:text-gray-400">
-        <div className="text-center">
-          <p>태스크와 버전을 선택하고 프롬프트를 실행하면 결과가 여기에 표시됩니다.</p>
-        </div>
+      <div className="flex items-center justify-center h-full">
+        <p className="text-muted">Please select a task</p>
       </div>
     );
   }
 
-  // 필터 변경 핸들러
-  const handleFilterChange = (filterName, value) => {
-    setHistoryFilters(prev => ({
-      ...prev,
-      [filterName]: value
-    }));
-  };
-  
+  // This component now has its own internal tabs, which is a bit redundant
+  // but we will keep it for now to preserve functionality.
+  // A future refactor could move this tab state into the parent MainContent component.
   return (
-    <div className="h-full flex flex-col">
-      {/* 헤더 */}
-      <div className="p-3 border-b border-gray-300 dark:border-gray-700">
-        <h2 className="text-lg font-semibold">결과 뷰어</h2>
-        <Tabs 
-          tabs={tabs} 
-          activeTab={activeTab} 
-          onTabChange={setActiveTab}
-        />
+    <>
+      {/* Header */}
+      <div className="panel-header">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="panel-title">Result</h2>
+          <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
+            Response Time: {mockResult.responseTime}
+          </span>
+        </div>
+
+        {/* Tabs */}
+        <div className="tab-container">
+          <button 
+            className={`tab ${activeTab === 'response' ? 'active' : ''}`}
+            onClick={() => setActiveTab('response')}
+          >
+            Response
+          </button>
+          <button 
+            className={`tab ${activeTab === 'history' ? 'active' : ''}`}
+            onClick={() => setActiveTab('history')}
+          >
+            History
+          </button>
+          <button 
+            className={`tab ${activeTab === 'comparison' ? 'active' : ''}`}
+            onClick={() => setActiveTab('comparison')}
+          >
+            Comparison
+          </button>
+          <button 
+            className={`tab ${activeTab === 'metrics' ? 'active' : ''}`}
+            onClick={() => setActiveTab('metrics')}
+          >
+            Metrics
+          </button>
+        </div>
       </div>
-      
-      {/* 콘텐츠 영역 */}
-      <div className="flex-1 overflow-auto">
-        {activeTab === 'latest' && (
-          <div className="p-4">
-            {selectedResult ? (
-              <>
-                <div className="mb-3 flex justify-between items-center">
-                  <div>
-                    <span className="text-sm text-gray-500 dark:text-gray-400">
-                      실행 시각: {new Date(selectedResult.timestamp || 0).toLocaleString()}
-                    </span>
-                    {selectedResult.output?.model && (
-                      <span className="text-sm text-gray-500 dark:text-gray-400 ml-4">
-                        모델: {selectedResult.output.model}
-                      </span>
-                    )}
+
+      {/* Content */}
+      <div className="p-5">
+        {activeTab === 'response' && (
+          <div className="space-y-4">
+            {/* AI Response Card */}
+            <div className="card">
+              <div className="flex items-start gap-3 mb-4">
+                <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs"
+                     style={{ background: 'var(--gradient-ai)' }}>
+                  ✨
+                </div>
+                <div>
+                  <div className="font-medium text-sm" style={{ color: 'var(--text-primary)' }}>
+                    {mockResult.model} Response
                   </div>
-                  <div>
-                    <Button 
-                      variant="outline"
-                      size="small"
-                      onClick={() => {/* 내보내기 로직 */}}
-                    >
-                      내보내기
-                    </Button>
+                  <div className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                    {mockResult.timestamp}
                   </div>
                 </div>
-                
-                <div className="bg-white dark:bg-gray-900 rounded shadow p-4 mt-2">
-                  <h3 className="font-semibold mb-2">LLM 응답:</h3>
-                  <pre className="whitespace-pre-wrap bg-gray-50 dark:bg-gray-800 p-3 rounded dark:text-white">
-                    {selectedResult.output?.response || "응답 데이터 없음"}
-                  </pre>
-                </div>
-                
-                <details className="mt-4">
-                  <summary className="cursor-pointer text-blue-600 dark:text-blue-400">
-                    사용된 프롬프트 보기
-                  </summary>
-                  <div className="mt-2 p-3 bg-gray-50 dark:bg-gray-800 rounded text-sm">
-                    <pre className="whitespace-pre-wrap dark:text-white">{selectedResult.output?.prompt || "프롬프트 데이터 없음"}</pre>
-                  </div>
-                </details>
-              </>
-            ) : (
-              <div className="text-center text-gray-500 dark:text-gray-400 py-10">
-                <p>아직 결과가 없습니다. 프롬프트를 실행하여 결과를 생성하세요.</p>
               </div>
-            )}
-          </div>
-        )}
-        
-        {activeTab === 'history' && (
-          <>
-            {/* 필터링 UI 추가 */}
-            <div className="p-4 border-b border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
-              <div className="flex flex-wrap gap-4 items-center">
-                <div className="flex items-center gap-2">
-                  <label htmlFor="version-filter" className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                    버전:
-                  </label>
-                  <select
-                    id="version-filter"
-                    className="px-3 py-1 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    value={historyFilters.versionId || ''}
-                    onChange={(e) => handleFilterChange('versionId', e.target.value || null)}
-                  >
-                    <option value="">모든 버전</option>
-                    {versions.map(v => (
-                      <option key={v.id} value={v.id}>
-                        {v.name || v.id}
-                      </option>
-                    ))}
-                  </select>
-                </div>
 
-                <div className="flex items-center gap-2">
-                  <label htmlFor="model-filter" className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                    모델:
-                  </label>
-                  <select
-                    id="model-filter"
-                    className="px-3 py-1 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    value={historyFilters.model}
-                    onChange={(e) => handleFilterChange('model', e.target.value)}
-                  >
-                    <option value="all">모든 모델</option>
-                    {llmEndpoints.map(ep => (
-                      ep.defaultModel && (
-                        <option key={ep.id} value={ep.defaultModel}>
-                          {ep.name} ({ep.defaultModel})
-                        </option>
-                      )
-                    ))}
-                    <option value="mock-model">Mock Model</option>
-                  </select>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <label htmlFor="date-filter" className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                    날짜:
-                  </label>
-                  <select
-                    id="date-filter"
-                    className="px-3 py-1 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    value={historyFilters.dateRange}
-                    onChange={(e) => handleFilterChange('dateRange', e.target.value)}
-                  >
-                    <option value="all">모든 날짜</option>
-                    <option value="today">오늘</option>
-                    <option value="last7days">지난 7일</option>
-                    <option value="last30days">지난 30일</option>
-                  </select>
-                </div>
-
-                <div className="text-sm text-gray-600 dark:text-gray-400">
-                  총 {results.length}개 결과
+              <div className="prose prose-sm max-w-none">
+                <div style={{ color: 'var(--text-secondary)', lineHeight: '1.6' }}>
+                  <h2 style={{ color: 'var(--text-primary)', fontSize: '16px', fontWeight: '600', marginBottom: '12px' }}>
+                    Generative AI's Impact on Small Businesses
+                  </h2>
+                  <p className="mb-3">
+                    Hello, business owners! Today, let's explore how generative AI can practically help your business.
+                  </p>
+                  <h3 style={{ color: 'var(--text-primary)', fontSize: '14px', fontWeight: '600', marginBottom: '8px' }}>
+                    1. Streamlining Marketing Content Creation
+                  </h3>
+                  <p className="mb-3">
+                    You no longer need to spend a fortune on outsourcing. With generative AI, you can create blog posts, social media content, and more, quickly and efficiently...
+                  </p>
+                  <h3 style={{ color: 'var(--text-primary)', fontSize: '14px', fontWeight: '600', marginBottom: '8px' }}>
+                    2. Automating Customer Service
+                  </h3>
+                  <p>
+                    Implement a 24/7 AI chatbot to increase customer satisfaction...
+                  </p>
                 </div>
               </div>
             </div>
-            
-            <ResultHistory 
-              results={results}
-              selectedResult={selectedResult}
-              onSelectResult={setSelectedResult}
-            />
-          </>
+
+            {/* Metrics */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="metric-card primary">
+                <div className="metric-label">Tokens Used</div>
+                <div className="metric-value primary">{mockResult.tokens.toLocaleString()}</div>
+              </div>
+              <div className="metric-card success">
+                <div className="metric-label">Estimated Cost</div>
+                <div className="metric-value success">{mockResult.estimatedCost}</div>
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="flex gap-3">
+              <button className="btn btn-secondary flex-1">
+                🔄 Regenerate
+              </button>
+              <button className="btn btn-success flex-1">
+                ✓ Save
+              </button>
+            </div>
+          </div>
         )}
-        
-        {activeTab === 'compare' && (
-          <ComparisonView 
-            versions={tasks[taskId]?.versions || []}
-            currentVersionId={versionId}
-            onCompare={(v1, v2) => {
-              const compResult = compareVersions(taskId, v1, v2);
-              setComparedResults(compResult);
-            }}
-            comparedResults={comparedResults}
-          />
+
+        {activeTab === 'history' && (
+          <div className="text-center py-12">
+            <div className="text-4xl mb-4">📚</div>
+            <p className="text-muted">No execution history</p>
+          </div>
         )}
-        
-        {activeTab === 'metrics' && selectedResult && (
-          <MetricsDisplay result={selectedResult} />
+
+        {activeTab === 'comparison' && (
+          <div className="text-center py-12">
+            <div className="text-4xl mb-4">⚖️</div>
+            <p className="text-muted">No results to compare</p>
+          </div>
+        )}
+
+        {activeTab === 'metrics' && (
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 gap-4">
+              <div className="metric-card primary">
+                <div className="metric-label">Total Tokens Used</div>
+                <div className="metric-value primary">12,847</div>
+              </div>
+              <div className="metric-card success">
+                <div className="metric-label">Total Cost</div>
+                <div className="metric-value success">$3.42</div>
+              </div>
+              <div className="metric-card">
+                <div className="metric-label">Average Response Time</div>
+                <div className="metric-value" style={{ color: 'var(--text-primary)' }}>1.8s</div>
+              </div>
+            </div>
+          </div>
         )}
       </div>
-    </div>
+    </>
   );
-}
+};
 
 export default ResultViewer;
