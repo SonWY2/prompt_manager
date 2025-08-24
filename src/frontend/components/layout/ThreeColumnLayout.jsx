@@ -1,41 +1,26 @@
 // src/frontend/components/layout/ThreeColumnLayout.jsx
 import React from 'react';
+import {
+  Panel,
+  PanelGroup,
+  PanelResizeHandle,
+} from 'react-resizable-panels';
 
-const ThreeColumnLayout = ({ 
-  leftPanel, 
-  centerPanel, 
-  rightPanel 
-}) => {
+const ThreeColumnLayout = ({ leftPanel, centerPanel, rightPanel }) => {
   return (
-    <div className="flex h-full">
-      {/* Left Panel - Fixed 320px */}
-      <div 
-        className="panel flex-shrink-0"
-        style={{ width: '320px', minWidth: '320px', maxWidth: '320px' }}
-      >
+    <PanelGroup direction="horizontal" className="h-full w-full">
+      <Panel defaultSize={20} minSize={15}>
         {leftPanel}
-      </div>
-      
-      {/* Center Panel - Fixed calculated width */}
-      <div 
-        className="panel flex-shrink-0"
-        style={{ 
-          width: 'calc(100vw - 320px - 400px)', 
-          minWidth: 'calc(100vw - 320px - 400px)',
-          maxWidth: 'calc(100vw - 320px - 400px)'
-        }}
-      >
+      </Panel>
+      <PanelResizeHandle />
+      <Panel defaultSize={50} minSize={30}>
         {centerPanel}
-      </div>
-      
-      {/* Right Panel - Fixed 400px */}
-      <div 
-        className="panel flex-shrink-0"
-        style={{ width: '400px', minWidth: '400px', maxWidth: '400px' }}
-      >
+      </Panel>
+      <PanelResizeHandle />
+      <Panel defaultSize={30} minSize={20}>
         {rightPanel}
-      </div>
-    </div>
+      </Panel>
+    </PanelGroup>
   );
 };
 

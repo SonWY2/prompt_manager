@@ -452,3 +452,14 @@ select option {
     --right-panel-width: 300px;
   }
 }
+
+[data-panel-resize-handle-id] {
+  width: 4px !important;
+  background-color: var(--border-primary) !important;
+  border: 1px solid var(--border-secondary) !important;
+  transition: background-color 0.2s ease;
+}
+
+[data-panel-resize-handle-id]:hover {
+  background-color: var(--accent-primary) !important;
+}
