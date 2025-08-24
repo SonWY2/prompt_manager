@@ -1,22 +1,20 @@
 {
-  "_default": {},
-  "tasks": [
-    {
-      "id": "task-1",
-      "name": "Test Task for Screenshot",
+  "tasks": {
+    "1": {
+      "id": "task-1756006971611",
+      "name": "1",
       "versions": [
         {
-          "id": "v1",
-          "name": "Version 1",
-          "content": "Initial content",
+          "id": "v1756006976768",
+          "content": "",
           "system_prompt": "You are a helpful assistant.",
-          "description": "A test version.",
+          "description": "",
+          "name": "1",
           "variables": {},
-          "createdAt": "2023-10-27T10:00:00Z",
-          "results": [],
-          "updatedAt": null
+          "createdAt": "2025-08-24T12:42:56.775664",
+          "results": []
         }
       ]
     }
-  ]
+  }
 }

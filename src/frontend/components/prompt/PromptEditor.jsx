@@ -1,5 +1,5 @@
 // src/frontend/components/prompt/PromptEditor.jsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useStore } from '../../store.jsx';
 
 const PromptEditor = ({ taskId, versionId }) => {
@@ -116,10 +116,72 @@ const PromptEditor = ({ taskId, versionId }) => {
     let rendered = promptText;
     extractedVariables.forEach(variable => {
       const value = variables[variable] || `{{${variable}}}`;
-      rendered = rendered.replace(new RegExp(`\\{\\{${variable}\\}\\}`, 'g'), value);
+      rendered = rendered.replace(new RegExp(`\{\{${variable}\}\}`, 'g'), value);
     });
     return rendered;
   };
+
+  // --- Collapse and Resize Logic ---
+  const [collapsedSections, setCollapsedSections] = useState({
+    description: false,
+    system: false,
+    main: false,
+  });
+  const [heights, setHeights] = useState({
+    description: 80,
+    system: 96,
+  });
+  const [dragging, setDragging] = useState(null);
+  const editorContainerRef = useRef(null);
+
+  const toggleSection = (section) => {
+    setCollapsedSections(prev => ({ ...prev, [section]: !prev[section] }));
+  };
+
+  const onDragStart = (e, section) => {
+    e.preventDefault();
+    setDragging(section);
+  };
+
+  const onDragEnd = useCallback(() => {
+    setDragging(null);
+  }, []);
+
+  const onDrag = useCallback((e) => {
+    if (dragging === null || !editorContainerRef.current) return;
+    e.preventDefault();
+
+    const rect = editorContainerRef.current.getBoundingClientRect();
+    const y = e.clientY - rect.top;
+
+    if (dragging === 'description') {
+      const newHeight = y - 20; // Adjust for padding and header
+      if (newHeight > 40) {
+        setHeights(h => ({ ...h, description: newHeight }));
+      }
+    } else if (dragging === 'system') {
+      const descriptionHeight = collapsedSections.description ? 40 : heights.description;
+      const newHeight = y - descriptionHeight - 60; // Adjust for padding, headers, and divider
+      if (newHeight > 40) {
+        setHeights(h => ({ ...h, system: newHeight }));
+      }
+    }
+  }, [dragging, heights.description, collapsedSections.description]);
+
+  useEffect(() => {
+    if (dragging !== null) {
+      document.addEventListener('mousemove', onDrag);
+      document.addEventListener('mouseup', onDragEnd);
+    } else {
+      document.removeEventListener('mousemove', onDrag);
+      document.removeEventListener('mouseup', onDragEnd);
+    }
+    return () => {
+      document.removeEventListener('mousemove', onDrag);
+      document.removeEventListener('mouseup', onDragEnd);
+    };
+  }, [dragging, onDrag, onDragEnd]);
+  // --- End Logic ---
 
   if (!currentTask) {
     return (
@@ -225,63 +287,90 @@ const PromptEditor = ({ taskId, versionId }) => {
           </div>
         ) : activeTab === 'prompt' ? (
           /* Prompt Tab */
-          <div className="flex flex-col h-full space-y-4">
+          <div className="flex flex-col h-full" ref={editorContainerRef}>
             {/* Description */}
-            <div className="card">
-              <h3 className="text-sm font-medium mb-3 flex items-center gap-2">
+            <div className="card flex flex-col">
+              <h3 className="text-sm font-medium mb-3 flex items-center gap-2 cursor-pointer" onClick={() => toggleSection('description')}>
+                <span className="transform transition-transform duration-200">{collapsedSections.description ? '▶' : '▼'}</span>
                 📝 Prompt Description
               </h3>
-              <textarea
-                value={taskDescription}
-                onChange={(e) => setTaskDescription(e.target.value)}
-                placeholder="Describe the purpose and usage of this prompt..."
-                className="w-full h-20 p-3 bg-transparent border rounded text-sm"
-                style={{
-                  borderColor: 'var(--border-primary)',
-                  color: 'var(--text-primary)'
-                }}
-              />
+              {!collapsedSections.description && (
+                <textarea
+                  value={taskDescription}
+                  onChange={(e) => setTaskDescription(e.target.value)}
+                  placeholder="Describe the purpose and usage of this prompt..."
+                  className="w-full p-3 bg-transparent border rounded text-sm"
+                  style={{
+                    height: `${heights.description}px`,
+                    borderColor: 'var(--border-primary)',
+                    color: 'var(--text-primary)',
+                    resize: 'none'
+                  }}
+                />
+              )}
             </div>
+            
+            {!collapsedSections.description && (
+              <div 
+                className="w-full h-2 my-2 cursor-row-resize bg-gray-200 dark:bg-gray-700 hover:bg-blue-400 transition-colors"
+                onMouseDown={(e) => onDragStart(e, 'description')}
+              />
+            )}
 
             {/* System Prompt */}
-            <div className="card">
-              <h3 className="text-sm font-medium mb-3 flex items-center gap-2">
+            <div className="card flex flex-col">
+              <h3 className="text-sm font-medium mb-3 flex items-center gap-2 cursor-pointer" onClick={() => toggleSection('system')}>
+                <span className="transform transition-transform duration-200">{collapsedSections.system ? '▶' : '▼'}</span>
                 🤖 System Prompt
               </h3>
-              <textarea
-                value={systemPrompt}
-                onChange={(e) => setSystemPrompt(e.target.value)}
-                placeholder="Define AI role and instructions..."
-                className="w-full h-24 p-3 bg-transparent border rounded text-sm"
-                style={{
-                  borderColor: 'var(--border-primary)',
-                  color: 'var(--text-primary)'
-                }}
-              />
+              {!collapsedSections.system && (
+                <textarea
+                  value={systemPrompt}
+                  onChange={(e) => setSystemPrompt(e.target.value)}
+                  placeholder="Define AI role and instructions..."
+                  className="w-full p-3 bg-transparent border rounded text-sm"
+                  style={{
+                    height: `${heights.system}px`,
+                    borderColor: 'var(--border-primary)',
+                    color: 'var(--text-primary)',
+                    resize: 'none'
+                  }}
+                />
+              )}
             </div>
+
+            {!collapsedSections.system && (
+               <div 
+                className="w-full h-2 my-2 cursor-row-resize bg-gray-200 dark:bg-gray-700 hover:bg-blue-400 transition-colors"
+                onMouseDown={(e) => onDragStart(e, 'system')}
+              />
+            )}
 
             {/* Main Prompt */}
             <div className="card flex flex-col flex-1">
-              <h3 className="text-sm font-medium mb-3 flex items-center gap-2">
+              <h3 className="text-sm font-medium mb-3 flex items-center gap-2 cursor-pointer" onClick={() => toggleSection('main')}>
+                <span className="transform transition-transform duration-200">{collapsedSections.main ? '▶' : '▼'}</span>
                 💬 Main Prompt
               </h3>
-              <textarea
-                value={promptText}
-                onChange={(e) => setPromptText(e.target.value)}
-                placeholder="Enter prompt... (Use {{variable_name}} for variables)"
-                className="w-full h-full p-3 bg-transparent border-none text-sm font-mono flex-1"
-                style={{
-                  color: 'var(--text-primary)',
-                  fontFamily: 'SF Mono, Monaco, monospace',
-                  lineHeight: '1.5',
-                  resize: 'none'
-                }}
-              />
+              {!collapsedSections.main && (
+                <textarea
+                  value={promptText}
+                  onChange={(e) => setPromptText(e.target.value)}
+                  placeholder="Enter prompt... (Use {{variable_name}} for variables)"
+                  className="w-full h-full p-3 bg-transparent border-none text-sm font-mono flex-1"
+                  style={{
+                    color: 'var(--text-primary)',
+                    fontFamily: 'SF Mono, Monaco, monospace',
+                    lineHeight: '1.5',
+                    resize: 'none'
+                  }}
+                />
+              )}
             </div>
 
             {/* Preview */}
             {isPreviewMode && (
-              <div className="card">
+              <div className="card mt-4">
                 <h4 className="text-sm font-medium mb-3">Preview</h4>
                 
                 {systemPrompt && (
