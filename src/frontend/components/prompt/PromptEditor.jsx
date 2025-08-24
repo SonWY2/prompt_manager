@@ -20,83 +20,145 @@ const HighlightEditor = ({ value, onChange, placeholder, className, style }) => 
   // Update editor content when value changes
   useEffect(() => {
     if (editorRef.current && !isComposing) {
-      const selection = window.getSelection();
-      const range = selection.rangeCount > 0 ? selection.getRangeAt(0) : null;
+      const currentHTML = editorRef.current.innerHTML;
+      const expectedHTML = highlightText(value) || '';
       
-      // Store cursor position more accurately
-      let cursorPosition = 0;
-      let shouldRestoreCursor = false;
-      
-      if (range && editorRef.current.contains(range.startContainer)) {
-        shouldRestoreCursor = true;
+      // Only update if HTML content actually needs to change
+      if (currentHTML !== expectedHTML) {
+        const selection = window.getSelection();
+        const range = selection.rangeCount > 0 ? selection.getRangeAt(0) : null;
         
-        // Walk through all text nodes to find current position
-        const walker = document.createTreeWalker(
-          editorRef.current,
-          NodeFilter.SHOW_TEXT,
-          null,
-          false
-        );
+        // Store cursor position more accurately
+        let cursorPosition = 0;
+        let shouldRestoreCursor = false;
         
-        let totalLength = 0;
-        while (walker.nextNode()) {
-          if (walker.currentNode === range.startContainer) {
-            cursorPosition = totalLength + range.startOffset;
-            break;
-          }
-          totalLength += walker.currentNode.textContent.length;
+        if (range && editorRef.current.contains(range.startContainer)) {
+          shouldRestoreCursor = true;
+          
+          // Calculate cursor position by counting characters
+          const textContent = editorRef.current.textContent || '';
+          const rangeBefore = range.cloneRange();
+          rangeBefore.selectNodeContents(editorRef.current);
+          rangeBefore.setEnd(range.startContainer, range.startOffset);
+          cursorPosition = rangeBefore.toString().length;
         }
-      }
-      
-      // Always update innerHTML with highlighted content for real-time highlighting
-      editorRef.current.innerHTML = highlightText(value) || '';
-      
-      // Restore cursor position if needed
-      if (shouldRestoreCursor && value) {
-        setTimeout(() => {
-          try {
-            const walker = document.createTreeWalker(
-              editorRef.current,
-              NodeFilter.SHOW_TEXT,
-              null,
-              false
-            );
-            
-            let charCount = 0;
-            let targetNode = null;
-            let targetOffset = 0;
-            
-            while (walker.nextNode()) {
-              const node = walker.currentNode;
-              const nodeLength = node.textContent.length;
+        
+        // Update innerHTML with highlighted content
+        editorRef.current.innerHTML = expectedHTML;
+        
+        // Restore cursor position if needed
+        if (shouldRestoreCursor) {
+          requestAnimationFrame(() => {
+            try {
+              const textContent = editorRef.current.textContent || '';
               
-              if (charCount + nodeLength >= cursorPosition) {
-                targetNode = node;
-                targetOffset = Math.min(cursorPosition - charCount, nodeLength);
-                break;
+              // Ensure cursor position is within bounds
+              cursorPosition = Math.min(cursorPosition, textContent.length);
+              
+              if (cursorPosition === 0) {
+                // If cursor should be at the beginning
+                const firstTextNode = getFirstTextNode(editorRef.current);
+                if (firstTextNode) {
+                  const newRange = document.createRange();
+                  newRange.setStart(firstTextNode, 0);
+                  newRange.collapse(true);
+                  selection.removeAllRanges();
+                  selection.addRange(newRange);
+                }
+                return;
               }
               
-              charCount += nodeLength;
-            }
-            
-            if (targetNode) {
-              const newRange = document.createRange();
-              const selection = window.getSelection();
+              // Find the correct text node and offset
+              const { node, offset } = findTextNodeAtPosition(editorRef.current, cursorPosition);
               
-              newRange.setStart(targetNode, targetOffset);
-              newRange.collapse(true);
-              
-              selection.removeAllRanges();
-              selection.addRange(newRange);
+              if (node) {
+                const newRange = document.createRange();
+                newRange.setStart(node, Math.min(offset, node.textContent.length));
+                newRange.collapse(true);
+                
+                selection.removeAllRanges();
+                selection.addRange(newRange);
+              }
+            } catch (e) {
+              console.warn('Cursor restoration failed:', e);
+              // Fallback: place cursor at the end
+              try {
+                const lastTextNode = getLastTextNode(editorRef.current);
+                if (lastTextNode) {
+                  const newRange = document.createRange();
+                  newRange.setStart(lastTextNode, lastTextNode.textContent.length);
+                  newRange.collapse(true);
+                  selection.removeAllRanges();
+                  selection.addRange(newRange);
+                }
+              } catch (fallbackError) {
+                console.warn('Fallback cursor placement failed:', fallbackError);
+              }
             }
-          } catch (e) {
-            // Silently handle cursor restoration errors
-            console.warn('Cursor restoration failed:', e);
-          }
-        }, 0);
+          });
+        }
       }
     }
   }, [value, isComposing]);
+  
+  // Helper function to find first text node
+  const getFirstTextNode = (element) => {
+    const walker = document.createTreeWalker(
+      element,
+      NodeFilter.SHOW_TEXT,
+      null,
+      false
+    );
+    return walker.nextNode();
+  };
+  
+  // Helper function to find last text node  
+  const getLastTextNode = (element) => {
+    const walker = document.createTreeWalker(
+      element,
+      NodeFilter.SHOW_TEXT,
+      null,
+      false
+    );
+    let lastNode = null;
+    while (walker.nextNode()) {
+      lastNode = walker.currentNode;
+    }
+    return lastNode;
+  };
+  
+  // Helper function to find text node at specific position
+  const findTextNodeAtPosition = (element, position) => {
+    const walker = document.createTreeWalker(
+      element,
+      NodeFilter.SHOW_TEXT,
+      null,
+      false
+    );
+    
+    let currentPosition = 0;
+    
+    while (walker.nextNode()) {
+      const node = walker.currentNode;
+      const nodeLength = node.textContent.length;
+      
+      if (currentPosition + nodeLength >= position) {
+        return {
+          node: node,
+          offset: position - currentPosition
+        };
+      }
+      
+      currentPosition += nodeLength;
+    }
+    
+    // If position is beyond content, return last text node
+    const lastNode = getLastTextNode(element);
+    return {
+      node: lastNode,
+      offset: lastNode ? lastNode.textContent.length : 0
+    };
+  };
 
   const handleInput = (e) => {
     if (!isComposing && onChange) {
