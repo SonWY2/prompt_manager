@@ -236,13 +236,30 @@ const PromptEditor = ({ taskId, versionId }) => {
   const [systemPrompt, setSystemPrompt] = useState('');
   const [taskName, setTaskName] = useState('');
   const [taskDescription, setTaskDescription] = useState('');
-  const [variables, setVariables] = useState({});
+  const [taskVariables, setTaskVariables] = useState({});  // Task 레벨 variables
   const [activeTab, setActiveTab] = useState('prompt'); // 'prompt' or 'variables'
   const [isPreviewMode, setIsPreviewMode] = useState(false);
   const [newVariable, setNewVariable] = useState({ name: '', value: '' });
   const [isEditingName, setIsEditingName] = useState(false);
 
   const currentTask = taskId ? tasks[taskId] : null;
+
+  // Task variables 로드
+  useEffect(() => {
+    const loadTaskVariables = async () => {
+      if (!taskId) return;
+      try {
+        const response = await fetch(`/api/tasks/${taskId}/variables`);
+        if (response.ok) {
+          const data = await response.json();
+          setTaskVariables(data.variables || {});
+        }
+      } catch (error) {
+        console.error('Task variables 로드 실패:', error);
+      }
+    };
+    loadTaskVariables();
+  }, [taskId]);
 
   useEffect(() => {
     const currentVersionData = currentTask?.versions?.find(v => v.id === versionId);
@@ -254,20 +271,51 @@ const PromptEditor = ({ taskId, versionId }) => {
       setPromptText(currentVersionData.content || '');
       setSystemPrompt(currentVersionData.system_prompt || 'You are a helpfull AI Assistant');
       setTaskDescription(currentVersionData.description || '');
-      setVariables(currentVersionData.variables || {});
     } else {
       // Clear fields if no version is selected or found
       setPromptText('');
       setSystemPrompt('You are a helpfull AI Assistant');
       setTaskDescription('');
-      setVariables({});
     }
   }, [versionId, currentTask]); // Depend directly on versionId and currentTask
 
   const extractedVariables = React.useMemo(() => {
-    const matches = promptText.match(/\{\{(\w+)\}\}/g) || [];
-    return [...new Set(matches.map(match => match.slice(2, -2)))];
-  }, [promptText]);
+    if (!currentTask) return [];
+    const allPromptsContent = new Set();
+    if (currentTask.versions) {
+      currentTask.versions.forEach(version => {
+        if (version.content) allPromptsContent.add(version.content);
+        if (version.system_prompt) allPromptsContent.add(version.system_prompt);
+      });
+    }
+    allPromptsContent.add(promptText);
+    allPromptsContent.add(systemPrompt);
+    const allMatches = [];
+    allPromptsContent.forEach(p => {
+      const matches = p.match(/\{\{(\w+)\}\}/g) || [];
+      allMatches.push(...matches);
+    });
+    return [...new Set(allMatches.map(match => match.slice(2, -2)))];
+  }, [currentTask, promptText, systemPrompt]);
+
+  const displayedVariables = React.useMemo(() => {
+    const fromPrompts = extractedVariables;
+    const fromState = Object.keys(taskVariables);
+    return [...new Set([...fromPrompts, ...fromState])];
+  }, [extractedVariables, taskVariables]);
+
+  // Automatically add new variables from prompt to taskVariables
+  useEffect(() => {
+    const newVars = extractedVariables.filter(v => v && v !== 'variables' && !taskVariables.hasOwnProperty(v));
+    if (newVars.length > 0) {
+      const updatedVariables = { ...taskVariables };
+      newVars.forEach(v => {
+        updatedVariables[v] = '';
+      });
+      saveTaskVariables(updatedVariables);
+    }
+  }, [extractedVariables, taskVariables]);
+
 
   const handleSave = async () => {
     if (!taskId || !versionId) return;
@@ -276,10 +324,26 @@ const PromptEditor = ({ taskId, versionId }) => {
         content: promptText,
         system_prompt: systemPrompt,
         description: taskDescription,
-        variables,
       });
     } catch (error) {
       console.error('저장 실패:', error);
+    }
+  };
+
+  // Task variables 저장 함수
+  const saveTaskVariables = async (newVariables) => {
+    if (!taskId) return;
+    try {
+      const response = await fetch(`/api/tasks/${taskId}/variables`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({variables: newVariables})
+      });
+      if (response.ok) {
+        setTaskVariables(newVariables);
+      }
+    } catch (error) {
+      console.error('Variables 저장 실패:', error);
     }
   };
 
@@ -300,7 +364,7 @@ const PromptEditor = ({ taskId, versionId }) => {
     try {
       const versionName = prompt('새 버전 이름을 입력하세요:');
       if (versionName) {
-        await createVersion(taskId, versionName, promptText, systemPrompt, taskDescription, variables);
+        await createVersion(taskId, versionName, promptText, systemPrompt, taskDescription);
       }
     } catch (error) {
       console.error('버전 생성 실패:', error);
@@ -308,7 +372,10 @@ const PromptEditor = ({ taskId, versionId }) => {
   };
 
   const handleCopyVersion = async () => {
-    if (!taskId || !currentVersionData) return;
+    if (!taskId || !versionId) return;
+    const currentVersionData = currentTask?.versions?.find(v => v.id === versionId);
+    if (!currentVersionData) return;
+
     const newName = prompt(`Enter a name for the copied version:`, `${currentVersionData.name} (Copy)`);
     if (newName) {
       try {
@@ -317,8 +384,7 @@ const PromptEditor = ({ taskId, versionId }) => {
           newName,
           currentVersionData.content,
           currentVersionData.system_prompt,
-          currentVersionData.description,
-          currentVersionData.variables
+          currentVersionData.description
         );
       } catch (error) {
         console.error('Failed to copy version:', error);
@@ -326,24 +392,23 @@ const PromptEditor = ({ taskId, versionId }) => {
     }
   };
 
-  const handleAddVariable = () => {
+  const handleAddVariable = async () => {
     if (!newVariable.name.trim()) return;
-    setVariables(prev => ({ ...prev, [newVariable.name.trim()]: newVariable.value }));
+    const updatedVariables = { ...taskVariables, [newVariable.name.trim()]: newVariable.value };
+    await saveTaskVariables(updatedVariables);
     setNewVariable({ name: '', value: '' });
   };
 
-  const handleRemoveVariable = (variable) => {
-    setVariables(prev => {
-      const updated = { ...prev };
-      delete updated[variable];
-      return updated;
-    });
+  const handleRemoveVariable = async (variable) => {
+    const updatedVariables = { ...taskVariables };
+    delete updatedVariables[variable];
+    await saveTaskVariables(updatedVariables);
   };
 
   const renderPromptWithVariables = () => {
     let rendered = promptText;
-    extractedVariables.forEach(variable => {
-      const value = variables[variable] || `{{${variable}}}`;
+    displayedVariables.forEach(variable => {
+      const value = taskVariables[variable] || `{{${variable}}}`;
       rendered = rendered.replace(new RegExp(`\{\{${variable}\}\}`, 'g'), value);
     });
     return rendered;
@@ -499,7 +564,7 @@ const PromptEditor = ({ taskId, versionId }) => {
             className={`tab ${activeTab === 'variables' ? 'active' : ''}`}
             onClick={() => setActiveTab('variables')}
           >
-            Variables ({extractedVariables.length})
+            Variables ({displayedVariables.length})
           </button>
         </div>
       </div>
@@ -664,13 +729,13 @@ const PromptEditor = ({ taskId, versionId }) => {
 
             {/* Variable List */}
             <div className="space-y-3">
-              {extractedVariables.length === 0 ? (
+              {displayedVariables.length === 0 ? (
                 <div className="text-center py-8" style={{ color: 'var(--text-muted)' }}>
                   <p>No variables in prompt.</p>
                   <p className="text-xs mt-1">Use <code>{'{{'}variable_name{'}}'}</code> format in your prompt.</p>
                 </div>
               ) : (
-                extractedVariables.map(variable => (
+                displayedVariables.map(variable => (
                   <div key={variable} className="card">
                     <div className="flex items-start gap-3">
                       <div className="flex-shrink-0 pt-2">
@@ -681,8 +746,17 @@ const PromptEditor = ({ taskId, versionId }) => {
                           {variable}
                         </label>
                         <textarea
-                          value={variables[variable] || ''}
-                          onChange={(e) => setVariables(prev => ({ ...prev, [variable]: e.target.value }))}
+                          value={taskVariables[variable] || ''}
+                          onChange={(e) => {
+                            const updatedVariables = { ...taskVariables, [variable]: e.target.value };
+                            setTaskVariables(updatedVariables);
+                            // Auto-save after a delay could be added here
+                          }}
+                          onBlur={(e) => {
+                            // Save on blur for better UX
+                            const updatedVariables = { ...taskVariables, [variable]: e.target.value };
+                            saveTaskVariables(updatedVariables);
+                          }}
                           className="w-full p-2 border rounded text-sm"
                           style={{ 
                             borderColor: 'var(--border-primary)',
@@ -698,19 +772,26 @@ const PromptEditor = ({ taskId, versionId }) => {
                       <button
                         className="flex-shrink-0 text-xs px-2 py-1 rounded transition-colors"
                         style={{ 
-                          color: 'var(--accent-danger)',
+                          color: extractedVariables.includes(variable) ? 'var(--text-muted)' : 'var(--accent-danger)',
                           background: 'transparent',
-                          border: '1px solid var(--accent-danger)',
-                          marginTop: '20px'
+                          border: `1px solid ${extractedVariables.includes(variable) ? 'var(--border-primary)' : 'var(--accent-danger)'}`,
+                          marginTop: '20px',
+                          cursor: extractedVariables.includes(variable) ? 'not-allowed' : 'pointer'
                         }}
                         onClick={() => handleRemoveVariable(variable)}
+                        disabled={extractedVariables.includes(variable)}
+                        title={extractedVariables.includes(variable) ? "Variable is used in a prompt and cannot be deleted." : "Delete variable"}
                         onMouseEnter={(e) => {
-                          e.target.style.background = 'var(--accent-danger)';
-                          e.target.style.color = 'white';
+                          if (!extractedVariables.includes(variable)) {
+                            e.target.style.background = 'var(--accent-danger)';
+                            e.target.style.color = 'white';
+                          }
                         }}
                         onMouseLeave={(e) => {
-                          e.target.style.background = 'transparent';
-                          e.target.style.color = 'var(--accent-danger)';
+                          if (!extractedVariables.includes(variable)) {
+                            e.target.style.background = 'transparent';
+                            e.target.style.color = 'var(--accent-danger)';
+                          }
                         }}
                       >
                         Delete

@@ -483,7 +483,7 @@ export const PromptProvider = ({ children }) => {
     }
   }, [loadTemplateVariables]);
   
-  const createVersion = useCallback(async (taskId, name, content, systemPrompt, description, variables) => {
+  const createVersion = useCallback(async (taskId, name, content, systemPrompt, description) => {
     try {
       const versionId = `v${Date.now()}`;
       const newVersion = {
@@ -492,7 +492,6 @@ export const PromptProvider = ({ children }) => {
         content,
         system_prompt: systemPrompt,
         description,
-        variables,
       };
 
       const response = await fetch(apiUrl(`/api/tasks/${taskId}/versions`), {

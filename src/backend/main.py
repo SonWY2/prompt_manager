@@ -142,7 +142,12 @@ def create_task(task: TaskCreate):
     if tasks_table.contains(where('id') == task_id):
         raise HTTPException(status_code=409, detail="Task already exists")
 
-    new_task = {"id": task_id, "name": task.name, "versions": []}
+    new_task = {
+        "id": task_id, 
+        "name": task.name, 
+        "versions": [],
+        "variables": {}  # Task 레벨에서 variables 관리
+    }
     tasks_table.insert(new_task)
 
     return {
@@ -278,6 +283,26 @@ def delete_history_item(task_id: str, version_id: str, timestamp: str):
     tasks_table.update(task, where('id') == task_id)
 
     return {"success": True, "message": "History item deleted successfully"}
+
+# Task Variables Management
+@app.get("/api/tasks/{task_id}/variables")
+def get_task_variables(task_id: str):
+    task = tasks_table.get(where('id') == task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    
+    return {"variables": task.get("variables", {})}
+
+@app.put("/api/tasks/{task_id}/variables")
+def update_task_variables(task_id: str, variables: Dict[str, Any]):
+    task = tasks_table.get(where('id') == task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    
+    task["variables"] = variables
+    tasks_table.update(task, where('id') == task_id)
+    
+    return {"success": True, "variables": variables}
 
 # 3. Template Variable Management
 @app.get("/api/templates/{task_id}/variables")
