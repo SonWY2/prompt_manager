@@ -650,10 +650,10 @@ const PromptEditor = ({ taskId, versionId }) => {
                   value={promptText}
                   onChange={setPromptText}
                   placeholder="Enter prompt... (Use {{variable_name}} for variables)"
-                  className="w-full h-full p-3 text-sm font-mono flex-1"
+                  className="w-full h-full p-3 text-sm flex-1"
                   style={{
                     color: 'var(--text-primary)',
-                    fontFamily: 'SF Mono, Monaco, monospace',
+                    fontFamily: 'inherit',
                     lineHeight: '1.5',
                     minHeight: '200px'
                   }}
