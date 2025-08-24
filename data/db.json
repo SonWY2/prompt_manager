@@ -22,5 +22,6 @@
       "activeEndpointId": null,
       "defaultEndpointId": null
     }
-  }
+  },
+  "llm_endpoints": {}
 }
