@@ -20,6 +20,16 @@ function LLMEndpointSettings() {
   const [isEditing, setIsEditing] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   
+  // 테스트 기능을 위한 상태 추가
+  const [testState, setTestState] = useState({
+    isTestingModels: false,
+    isTestingChat: false,
+    modelsResult: null,
+    chatResult: null,
+    testError: null,
+    testMessage: 'Hello, this is a test message. Can you respond with a simple greeting?'
+  });
+  
   // 컴포넌트 마운트 시 데이터 로드
   useEffect(() => {
     loadLlmEndpoints().catch(error => {
@@ -131,6 +141,77 @@ function LLMEndpointSettings() {
     }
   };
   
+  // 테스트 기능들
+  const testModelsEndpoint = async (endpoint) => {
+    if (!endpoint) return;
+    
+    setTestState(prev => ({ ...prev, isTestingModels: true, testError: null, modelsResult: null }));
+    
+    const requestBody = {
+      baseUrl: endpoint.baseUrl,
+      apiKey: endpoint.apiKey
+    };
+    console.log('Testing /v1/models with endpoint config:', requestBody);
+    
+    try {
+      const response = await fetch('/api/test-endpoint/models', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestBody)
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+      }
+      
+      const data = await response.json();
+      setTestState(prev => ({ ...prev, modelsResult: data, testError: null }));
+    } catch (error) {
+      console.error('Models test failed:', error);
+      setTestState(prev => ({ ...prev, testError: error.message }));
+    } finally {
+      setTestState(prev => ({ ...prev, isTestingModels: false }));
+    }
+  };
+  
+  const testChatEndpoint = async (endpoint) => {
+    if (!endpoint) return;
+    
+    setTestState(prev => ({ ...prev, isTestingChat: true, testError: null, chatResult: null }));
+    
+    const requestBody = {
+      baseUrl: endpoint.baseUrl,
+      apiKey: endpoint.apiKey,
+      model: endpoint.defaultModel || 'gpt-3.5-turbo',
+      message: testState.testMessage
+    };
+    console.log('Testing /v1/chat/completions with endpoint config:', requestBody);
+    
+    try {
+      const response = await fetch('/api/test-endpoint/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestBody)
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+      }
+      
+      const data = await response.json();
+      setTestState(prev => ({ ...prev, chatResult: data, testError: null }));
+    } catch (error) {
+      console.error('Chat test failed:', error);
+      setTestState(prev => ({ ...prev, testError: error.message }));
+    } finally {
+      setTestState(prev => ({ ...prev, isTestingChat: false }));
+    }
+  };
+  
+  const updateTestMessage = (message) => {
+    setTestState(prev => ({ ...prev, testMessage: message }));
+  };
+  
   return (
     <div className="h-full flex" style={{ background: 'var(--bg-primary)' }}>
       {/* Left Panel - Endpoint List */}
@@ -216,11 +297,11 @@ function LLMEndpointSettings() {
                   </div>
                 </div>
                 
-                <div className="flex gap-2">
+                <div className="flex items-center gap-4">
                   <button
                     onClick={() => handleEdit(selectedEndpointId)}
                     className="flex items-center gap-2 px-4 py-2 text-sm rounded-lg transition-all duration-200 hover:bg-gray-700"
-                    style={{ background: 'var(--bg-tertiary)', color: 'var(--text-primary)', border: '1px solid var(--border-primary)' }}
+                    style={{ background: 'var(--bg-tertiary)', color: 'var(--text-primary)', border: '1px solid var(--border-primary)', minWidth: '90px' }}
                   >
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
@@ -231,8 +312,8 @@ function LLMEndpointSettings() {
                   {activeLlmEndpointId !== selectedEndpointId && (
                     <button
                       onClick={() => handleActivate(selectedEndpointId)}
-                      className="flex items-center gap-2 px-4 py-2 text-sm rounded-lg transition-all duration-200"
-                      style={{ background: 'var(--accent-success)', color: 'white', border: 'none' }}
+                      className="flex items-center gap-2 px-4 py-2 text-sm rounded-lg transition-all duration-200 hover:shadow-md"
+                      style={{ background: 'var(--accent-success)', color: 'white', border: 'none', minWidth: '100px' }}
                     >
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
@@ -244,8 +325,8 @@ function LLMEndpointSettings() {
                   {defaultLlmEndpointId !== selectedEndpointId && (
                     <button
                       onClick={() => handleSetDefault(selectedEndpointId)}
-                      className="flex items-center gap-2 px-4 py-2 text-sm rounded-lg transition-all duration-200"
-                      style={{ background: 'var(--accent-primary)', color: 'white', border: 'none' }}
+                      className="flex items-center gap-2 px-4 py-2 text-sm rounded-lg transition-all duration-200 hover:shadow-md"
+                      style={{ background: 'var(--accent-primary)', color: 'white', border: 'none', minWidth: '120px' }}
                     >
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
@@ -342,6 +423,153 @@ function LLMEndpointSettings() {
                       </div>
                     </div>
                   </div>
+                </div>
+                
+                {/* Test Section */}
+                <div className="p-4 rounded-lg border mb-8" style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-primary)' }}>
+                  <h3 className="text-sm font-medium mb-4 flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    Connection Tests
+                  </h3>
+                  
+                  {/* Test Buttons */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                    {/* Models Test */}
+                    <div className="space-y-2">
+                      <button
+                        onClick={() => testModelsEndpoint(selectedEndpoint)}
+                        disabled={testState.isTestingModels}
+                        className={`w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg text-sm font-medium transition-all duration-200 ${
+                          testState.isTestingModels ? 'opacity-50 cursor-not-allowed' : 'hover:shadow-md'
+                        }`}
+                        style={{ background: 'var(--accent-primary)', color: 'white', border: 'none' }}
+                      >
+                        {testState.isTestingModels ? (
+                          <>
+                            <svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                              <path className="opacity-75" fill="currentColor" d="m4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                            Testing...
+                          </>
+                        ) : (
+                          <>
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 011-1h1m-1 1v1h2V5a2 2 0 011-1h1M9 7v2m8-2v2" />
+                            </svg>
+                            Test /v1/models
+                          </>
+                        )}
+                      </button>
+                      <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Check available models</p>
+                    </div>
+                    
+                    {/* Chat Test */}
+                    <div className="space-y-2">
+                      <button
+                        onClick={() => testChatEndpoint(selectedEndpoint)}
+                        disabled={testState.isTestingChat}
+                        className={`w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg text-sm font-medium transition-all duration-200 ${
+                          testState.isTestingChat ? 'opacity-50 cursor-not-allowed' : 'hover:shadow-md'
+                        }`}
+                        style={{ background: 'var(--accent-success)', color: 'white', border: 'none' }}
+                      >
+                        {testState.isTestingChat ? (
+                          <>
+                            <svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                              <path className="opacity-75" fill="currentColor" d="m4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                            Testing...
+                          </>
+                        ) : (
+                          <>
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                            </svg>
+                            Test /v1/chat/completions
+                          </>
+                        )}
+                      </button>
+                      <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Test chat completion</p>
+                    </div>
+                  </div>
+                  
+                  {/* Test Message Input */}
+                  <div className="mb-4">
+                    <label className="block text-xs font-medium mb-2" style={{ color: 'var(--text-secondary)' }}>Test Message:</label>
+                    <textarea
+                      value={testState.testMessage}
+                      onChange={(e) => updateTestMessage(e.target.value)}
+                      className="w-full px-3 py-2 rounded text-sm transition-all duration-200 focus:border-purple-500 resize-none"
+                      style={{ 
+                        background: 'var(--bg-tertiary)', 
+                        border: '1px solid var(--border-primary)',
+                        color: 'var(--text-primary)',
+                        minHeight: '60px'
+                      }}
+                      placeholder="Enter your test message here..."
+                      rows={2}
+                    />
+                  </div>
+                  
+                  {/* Test Results */}
+                  {(testState.modelsResult || testState.chatResult || testState.testError) && (
+                    <div className="space-y-4">
+                      {/* Error Display */}
+                      {testState.testError && (
+                        <div className="p-3 rounded-lg border" style={{ 
+                          background: 'rgba(239, 68, 68, 0.1)', 
+                          borderColor: 'var(--accent-danger)',
+                          color: 'var(--accent-danger)'
+                        }}>
+                          <div className="flex items-center gap-2 mb-2">
+                            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                            </svg>
+                            <span className="font-medium text-sm">Test Failed</span>
+                          </div>
+                          <pre className="text-sm whitespace-pre-wrap font-mono">{testState.testError}</pre>
+                        </div>
+                      )}
+                      
+                      {/* Models Result */}
+                      {testState.modelsResult && (
+                        <div className="p-3 rounded-lg border" style={{ background: 'var(--bg-tertiary)', borderColor: 'var(--border-primary)' }}>
+                          <h4 className="font-medium text-sm mb-2 flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
+                            <svg className="w-4 h-4 text-green-500" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                            </svg>
+                            Models Test Result
+                          </h4>
+                          <div className="bg-black rounded p-3 overflow-auto max-h-40">
+                            <pre className="text-xs font-mono text-green-400">
+                              {JSON.stringify(testState.modelsResult, null, 2)}
+                            </pre>
+                          </div>
+                        </div>
+                      )}
+                      
+                      {/* Chat Result */}
+                      {testState.chatResult && (
+                        <div className="p-3 rounded-lg border" style={{ background: 'var(--bg-tertiary)', borderColor: 'var(--border-primary)' }}>
+                          <h4 className="font-medium text-sm mb-2 flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
+                            <svg className="w-4 h-4 text-green-500" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                            </svg>
+                            Chat Test Result
+                          </h4>
+                          <div className="bg-black rounded p-3 overflow-auto max-h-40">
+                            <pre className="text-xs font-mono text-green-400">
+                              {JSON.stringify(testState.chatResult, null, 2)}
+                            </pre>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
                 
                 {/* Metadata */}

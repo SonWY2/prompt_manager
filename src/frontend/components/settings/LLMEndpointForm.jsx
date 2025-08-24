@@ -183,6 +183,7 @@ function LLMEndpointForm({ endpoint, isEditing, onSave, onCancel }) {
     const presets = {
       openai: 'https://api.openai.com/v1',
       anthropic: 'https://api.anthropic.com',
+      openrouter: 'https://openrouter.ai/api/v1',
       localVllm: 'http://localhost:8000/v1',
       localOllama: 'http://localhost:11434/v1',
       together: 'https://api.together.xyz/v1',
@@ -207,7 +208,14 @@ function LLMEndpointForm({ endpoint, isEditing, onSave, onCancel }) {
       'llama-3-8b': 'meta-llama/Meta-Llama-3-8B-Instruct',
       'llama-3-70b': 'meta-llama/Meta-Llama-3-70B-Instruct',
       'mistral-7b': 'mistralai/Mistral-7B-Instruct-v0.2',
-      'mixtral-8x7b': 'mistralai/Mixtral-8x7B-Instruct-v0.1'
+      'mixtral-8x7b': 'mistralai/Mixtral-8x7B-Instruct-v0.1',
+      // OpenRouter 전용 모델들
+      'or-gpt-4o': 'openai/gpt-4o',
+      'or-claude-3-5-sonnet': 'anthropic/claude-3-5-sonnet',
+      'or-llama-3-8b': 'meta-llama/llama-3-8b-instruct',
+      'or-mixtral-8x7b': 'mistralai/mixtral-8x7b-instruct',
+      'or-gemini-pro': 'google/gemini-pro',
+      'or-qwen-72b': 'qwen/qwen-2-72b-instruct'
     };
     
     if (presets[preset]) {
@@ -352,12 +360,15 @@ function LLMEndpointForm({ endpoint, isEditing, onSave, onCancel }) {
                       placeholder="https://api.openai.com/v1"
                     />
                     
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                       <PresetButton onClick={() => handlePresetUrl('openai')} icon="🤖">
                         OpenAI
                       </PresetButton>
                       <PresetButton onClick={() => handlePresetUrl('anthropic')} icon="🧠">
                         Anthropic
+                      </PresetButton>
+                      <PresetButton onClick={() => handlePresetUrl('openrouter')} icon="🔀">
+                        OpenRouter
                       </PresetButton>
                       <PresetButton onClick={() => handlePresetUrl('together')} icon="🤝">
                         Together AI
@@ -464,6 +475,32 @@ function LLMEndpointForm({ endpoint, isEditing, onSave, onCancel }) {
                           </PresetButton>
                           <PresetButton onClick={() => handlePresetModel('claude-3-haiku')}>
                             Claude 3 Haiku
+                          </PresetButton>
+                        </div>
+                      </div>
+                      
+                      <div>
+                        <p className="text-xs mb-2" style={{ color: 'var(--text-muted)' }}>
+                          OpenRouter Models (Unified Access):
+                        </p>
+                        <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                          <PresetButton onClick={() => handlePresetModel('or-gpt-4o')}>
+                            GPT-4o
+                          </PresetButton>
+                          <PresetButton onClick={() => handlePresetModel('or-claude-3-5-sonnet')}>
+                            Claude 3.5 Sonnet
+                          </PresetButton>
+                          <PresetButton onClick={() => handlePresetModel('or-llama-3-8b')}>
+                            Llama 3 8B
+                          </PresetButton>
+                          <PresetButton onClick={() => handlePresetModel('or-mixtral-8x7b')}>
+                            Mixtral 8x7B
+                          </PresetButton>
+                          <PresetButton onClick={() => handlePresetModel('or-gemini-pro')}>
+                            Gemini Pro
+                          </PresetButton>
+                          <PresetButton onClick={() => handlePresetModel('or-qwen-72b')}>
+                            Qwen 72B
                           </PresetButton>
                         </div>
                       </div>

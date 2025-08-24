@@ -1,6 +1,8 @@
 import os
 import json
 import datetime
+import re
+import aiohttp
 from fastapi import FastAPI, HTTPException, Body
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
@@ -278,35 +280,173 @@ async def call_llm_endpoint(call: LLMCall):
     if not version:
         raise HTTPException(status_code=404, detail="Version not found")
 
+    # 활성화된 엔드포인트 가져오기
+    settings = get_settings()
+    active_endpoint_id = settings.get('activeEndpointId')
+    
+    if not active_endpoint_id:
+        raise HTTPException(status_code=400, detail="No active LLM endpoint configured")
+    
+    active_endpoint = llm_endpoints_table.get(where('id') == active_endpoint_id)
+    if not active_endpoint:
+        raise HTTPException(status_code=404, detail="Active LLM endpoint not found")
+
+    # 템플릿 렌더링
     rendered_prompt = render_template(version["content"], call.inputData)
+    
+    # 실제 LLM API 호출
+    try:
+        result = await call_actual_llm_api(
+            endpoint=active_endpoint,
+            system_prompt=call.system_prompt or version.get("system_prompt", "You are a helpful assistant."),
+            user_prompt=rendered_prompt,
+            model=active_endpoint.get('defaultModel')
+        )
+    except Exception as e:
+        print(f"LLM API 호출 실패: {e}")
+        # 실패시 더미 응답 반환
+        result = {
+            "id": "error-response",
+            "object": "chat.completion",
+            "created": int(datetime.datetime.now().timestamp()),
+            "model": active_endpoint.get('defaultModel', 'unknown'),
+            "choices": [{
+                "index": 0,
+                "message": {
+                    "role": "assistant",
+                    "content": f"Error calling LLM API: {str(e)}\n\nRendered prompt was: {rendered_prompt}"
+                },
+                "finish_reason": "error"
+            }],
+            "error": str(e)
+        }
 
-    dummy_result = {
-        "id": "chatcmpl-123",
-        "object": "chat.completion",
-        "created": int(datetime.datetime.now().timestamp()),
-        "model": "dummy-model",
-        "choices": [{
-            "index": 0,
-            "message": {
-                "role": "assistant",
-                "content": f"This is a dummy response for the prompt: '{rendered_prompt}'"
-            },
-            "finish_reason": "stop"
-        }]
-    }
-
+    # 결과 저장
     if "results" not in version:
         version["results"] = []
 
     version["results"].insert(0, {
         "inputData": call.inputData,
-        "output": dummy_result,
-        "timestamp": datetime.datetime.now().isoformat()
+        "output": result,
+        "timestamp": datetime.datetime.now().isoformat(),
+        "endpoint": {
+            "id": active_endpoint['id'],
+            "name": active_endpoint['name'],
+            "model": active_endpoint.get('defaultModel')
+        }
     })
 
     tasks_table.update(task, where('id') == call.taskId)
 
-    return {"result": dummy_result}
+    return {"result": result}
+
+
+# 실제 LLM API 호출 함수
+async def call_actual_llm_api(endpoint: dict, system_prompt: str, user_prompt: str, model: str = None):
+    """실제 LLM API 호출"""
+    
+    base_url = endpoint.get('baseUrl', '').rstrip('/')
+    api_key = endpoint.get('apiKey')
+    model = model or endpoint.get('defaultModel', 'gpt-3.5-turbo')
+    
+    if not base_url:
+        raise Exception("Base URL is required")
+    
+    # API 요청 구성
+    headers = {
+        'Content-Type': 'application/json'
+    }
+    
+    # API 키가 있는 경우 헤더에 추가
+    if api_key:
+        if 'openai.com' in base_url or 'api.together.xyz' in base_url:
+            headers['Authorization'] = f'Bearer {api_key}'
+        elif 'openrouter.ai' in base_url:
+            headers['Authorization'] = f'Bearer {api_key}'
+            # OpenRouter 권장 헤더
+            headers['HTTP-Referer'] = 'https://prompt-manager.local'
+            headers['X-Title'] = 'Prompt Manager'
+        elif 'anthropic.com' in base_url:
+            headers['x-api-key'] = api_key
+            headers['anthropic-version'] = '2023-06-01'
+    
+    # Anthropic Claude API
+    if 'anthropic.com' in base_url:
+        data = {
+            'model': model,
+            'max_tokens': 4000,
+            'messages': [
+                {
+                    'role': 'user',
+                    'content': f"{system_prompt}\n\n{user_prompt}"
+                }
+            ]
+        }
+        url = f"{base_url}/messages"
+    else:
+        # OpenAI 호환 API (OpenAI, Together, vLLM, Ollama 등)
+        data = {
+            'model': model,
+            'messages': [
+                {'role': 'system', 'content': system_prompt},
+                {'role': 'user', 'content': user_prompt}
+            ],
+            'temperature': 0.7,
+            'max_tokens': 4000
+        }
+        url = f"{base_url}/chat/completions"
+    
+    print(f"🚀 LLM API 호출: {url}")
+    print(f"📝 Model: {model}")
+    print(f"💬 Prompt length: {len(user_prompt)} chars")
+    
+    async with aiohttp.ClientSession() as session:
+        try:
+            async with session.post(
+                url, 
+                headers=headers, 
+                json=data,
+                timeout=aiohttp.ClientTimeout(total=60)  # 60초 타임아웃
+            ) as response:
+                
+                if response.status != 200:
+                    error_text = await response.text()
+                    print(f"❌ API 오류 응답: {response.status} - {error_text}")
+                    raise Exception(f"API returned {response.status}: {error_text}")
+                
+                response_data = await response.json()
+                print(f"✅ LLM API 호출 성공")
+                
+                # Anthropic 응답을 OpenAI 형식으로 변환
+                if 'anthropic.com' in base_url:
+                    return {
+                        "id": response_data.get('id', 'claude-response'),
+                        "object": "chat.completion",
+                        "created": int(datetime.datetime.now().timestamp()),
+                        "model": model,
+                        "choices": [{
+                            "index": 0,
+                            "message": {
+                                "role": "assistant",
+                                "content": response_data.get('content', [{}])[0].get('text', 'No response')
+                            },
+                            "finish_reason": response_data.get('stop_reason', 'stop')
+                        }],
+                        "usage": {
+                            "prompt_tokens": response_data.get('usage', {}).get('input_tokens', 0),
+                            "completion_tokens": response_data.get('usage', {}).get('output_tokens', 0),
+                            "total_tokens": response_data.get('usage', {}).get('input_tokens', 0) + response_data.get('usage', {}).get('output_tokens', 0)
+                        }
+                    }
+                
+                return response_data
+                
+        except aiohttp.ClientError as e:
+            print(f"❌ 연결 오류: {e}")
+            raise Exception(f"Connection error: {str(e)}")
+        except Exception as e:
+            print(f"❌ 예상치 못한 오류: {e}")
+            raise
 
 # 5. LLM Endpoints Management
 @app.get("/api/llm-endpoints")
@@ -394,7 +534,176 @@ def set_default_llm_endpoint(endpoint_id: str):
 
     return {"success": True, "defaultEndpointId": endpoint_id}
 
-import re
+
+# Test Endpoint Models
+class TestEndpointModelsRequest(BaseModel):
+    baseUrl: str
+    apiKey: Optional[str] = None
+
+
+class TestEndpointChatRequest(BaseModel):
+    baseUrl: str
+    apiKey: Optional[str] = None
+    model: str = "gpt-3.5-turbo"
+    message: str = "Hello, this is a test message."
+
+
+# Test Endpoints
+@app.post("/api/test-endpoint/models")
+async def test_models_endpoint(request: TestEndpointModelsRequest):
+    """Test the /v1/models endpoint of an LLM provider"""
+    print("Received request for /api/test-endpoint/models")
+    try:
+        base_url = request.baseUrl.rstrip('/')
+        api_key = request.apiKey
+        
+        headers = {
+            'Content-Type': 'application/json'
+        }
+        
+        # Add API key to headers if provided
+        if api_key:
+            if 'openai.com' in base_url or 'api.together.xyz' in base_url:
+                headers['Authorization'] = f'Bearer {api_key}'
+            elif 'openrouter.ai' in base_url:
+                headers['Authorization'] = f'Bearer {api_key}'
+                headers['HTTP-Referer'] = 'https://prompt-manager.local'
+                headers['X-Title'] = 'Prompt Manager'
+            elif 'anthropic.com' in base_url:
+                headers['x-api-key'] = api_key
+                headers['anthropic-version'] = '2023-06-01'
+        
+        # Correctly construct the URL
+        url = f"{base_url}/models"
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                url, 
+                headers=headers,
+                timeout=aiohttp.ClientTimeout(total=30)
+            ) as response:
+                
+                if response.status != 200:
+                    error_text = await response.text()
+                    raise HTTPException(
+                        status_code=response.status, 
+                        detail=f"API returned {response.status}: {error_text}"
+                    )
+                
+                response_data = await response.json()
+                return response_data
+                
+    except aiohttp.ClientError as e:
+        raise HTTPException(status_code=500, detail=f"Connection error: {str(e)}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Test failed: {str(e)}")
+
+
+@app.post("/api/test-endpoint/chat")
+async def test_chat_endpoint(request: TestEndpointChatRequest):
+    """Test the /v1/chat/completions endpoint of an LLM provider"""
+    print("Received request for /api/test-endpoint/chat")
+    try:
+        base_url = request.baseUrl.rstrip('/')
+        api_key = request.apiKey
+        model = request.model
+        message = request.message
+        
+        headers = {
+            'Content-Type': 'application/json'
+        }
+        
+        # Add API key to headers if provided
+        if api_key:
+            if 'openai.com' in base_url or 'api.together.xyz' in base_url:
+                headers['Authorization'] = f'Bearer {api_key}'
+            elif 'openrouter.ai' in base_url:
+                headers['Authorization'] = f'Bearer {api_key}'
+                headers['HTTP-Referer'] = 'https://prompt-manager.local'
+                headers['X-Title'] = 'Prompt Manager'
+            elif 'anthropic.com' in base_url:
+                headers['x-api-key'] = api_key
+                headers['anthropic-version'] = '2023-06-01'
+        
+        # Prepare request data based on provider
+        if 'anthropic.com' in base_url:
+            # Anthropic Claude API format
+            data = {
+                'model': model,
+                'max_tokens': 100,
+                'messages': [
+                    {
+                        'role': 'user',
+                        'content': message
+                    }
+                ]
+            }
+            url = f"{base_url}/messages"
+        else:
+            # OpenAI compatible format
+            data = {
+                'model': model,
+                'messages': [
+                    {
+                        'role': 'system',
+                        'content': 'You are a helpful assistant. Please provide a brief response for testing purposes.'
+                    },
+                    {
+                        'role': 'user',
+                        'content': message
+                    }
+                ],
+                'max_tokens': 100,
+                'temperature': 0.7
+            }
+            url = f"{base_url}/chat/completions"
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                url, 
+                headers=headers,
+                json=data,
+                timeout=aiohttp.ClientTimeout(total=60)
+            ) as response:
+                
+                if response.status != 200:
+                    error_text = await response.text()
+                    raise HTTPException(
+                        status_code=response.status, 
+                        detail=f"API returned {response.status}: {error_text}"
+                    )
+                
+                response_data = await response.json()
+                
+                # Convert Anthropic response to OpenAI format for consistency
+                if 'anthropic.com' in base_url:
+                    return {
+                        "id": response_data.get('id', 'claude-test'),
+                        "object": "chat.completion",
+                        "created": int(datetime.datetime.now().timestamp()),
+                        "model": model,
+                        "choices": [{
+                            "index": 0,
+                            "message": {
+                                "role": "assistant",
+                                "content": response_data.get('content', [{}])[0].get('text', 'No response')
+                            },
+                            "finish_reason": response_data.get('stop_reason', 'stop')
+                        }],
+                        "usage": {
+                            "prompt_tokens": response_data.get('usage', {}).get('input_tokens', 0),
+                            "completion_tokens": response_data.get('usage', {}).get('output_tokens', 0),
+                            "total_tokens": response_data.get('usage', {}).get('input_tokens', 0) + response_data.get('usage', {}).get('output_tokens', 0)
+                        }
+                    }
+                
+                return response_data
+                
+    except aiohttp.ClientError as e:
+        raise HTTPException(status_code=500, detail=f"Connection error: {str(e)}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Test failed: {str(e)}")
+
 
 # --- Server Startup ---
 if __name__ == "__main__":
