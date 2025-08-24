@@ -587,6 +587,36 @@ export const PromptProvider = ({ children }) => {
     }
   }, [loadVersions]);
 
+  const deleteHistoryItem = useCallback(async (taskId, versionId, resultTimestamp) => {
+    try {
+      // Optimistically update the UI
+      setTasks(prevTasks => {
+        const newTasks = { ...prevTasks };
+        const task = newTasks[taskId];
+        if (task) {
+          const version = task.versions.find(v => v.id === versionId);
+          if (version) {
+            version.results = version.results.filter(r => r.timestamp !== resultTimestamp);
+          }
+        }
+        return newTasks;
+      });
+
+      const response = await fetch(apiUrl(`/api/tasks/${taskId}/versions/${versionId}/results/${resultTimestamp}`), {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to delete history item on the server');
+      }
+    } catch (error) {
+      console.error('Error deleting history item:', error);
+      // Revert the optimistic update in case of an error
+      loadVersions(taskId);
+      throw error;
+    }
+  }, [loadVersions]);
+
   const initiateNewVersion = useCallback((taskId) => {
     if (!taskId) {
       console.error("Cannot initiate new version without a task ID.");
@@ -652,29 +682,31 @@ export const PromptProvider = ({ children }) => {
       
       const data = await response.json();
       
-      // 결과 추가
-      setLLMResults(prev => [data.result, ...prev]);
-      
-      // 버전에 결과 추가
-      setVersions(prev => {
-        return prev.map(v => {
-          if (v.id === versionId) {
-            const results = Array.isArray(v.results) ? v.results : [];
-            return {
-              ...v,
-              results: [
-                { 
-                  inputData, 
-                  output: data.result,
-                  timestamp: new Date().toISOString()
-                },
-                ...results
-              ]
-            };
+      const newResult = {
+        inputData,
+        output: data.result,
+        timestamp: new Date().toISOString(),
+        endpoint: activeEndpoint
+      };
+
+      // Update the main tasks state
+      setTasks(prevTasks => {
+        const newTasks = { ...prevTasks };
+        const task = newTasks[taskId];
+        if (task) {
+          const version = task.versions.find(v => v.id === versionId);
+          if (version) {
+            if (!Array.isArray(version.results)) {
+              version.results = [];
+            }
+            version.results.unshift(newResult);
           }
-          return v;
-        });
+        }
+        return newTasks;
       });
+      
+      // Also update the separate versions state for any components that might still rely on it
+      setVersions(prev => prev.map(v => v.id === versionId ? { ...v, results: [newResult, ...(v.results || [])] } : v));
       
       return data.result;
     } catch (error) {
@@ -684,9 +716,13 @@ export const PromptProvider = ({ children }) => {
   }, [llmEndpoints, activeLlmEndpointId]);
   
   const getVersionResults = useCallback((taskId, versionId) => {
-    const version = versions.find(v => v.id === versionId);
+    if (!taskId || !versionId || !tasks[taskId]) {
+      return [];
+    }
+    const task = tasks[taskId];
+    const version = task.versions?.find(v => v.id === versionId);
     return version?.results || [];
-  }, [versions]);
+  }, [tasks]);
   
   const compareVersions = useCallback(async (taskId, version1, version2) => {
     try {
@@ -750,6 +786,7 @@ export const PromptProvider = ({ children }) => {
       setIsEditMode,
       updateVersion,
       deleteVersion,
+      deleteHistoryItem,
       initiateNewVersion, // Add this line
       getVersionDetail,
       loadTemplateVariables,

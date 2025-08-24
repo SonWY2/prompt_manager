@@ -22,9 +22,10 @@ const PromptEditor = ({ taskId, versionId }) => {
   const [isEditingName, setIsEditingName] = useState(false);
 
   const currentTask = taskId ? tasks[taskId] : null;
-  const currentVersionData = currentTask?.versions?.find(v => v.id === versionId);
 
   useEffect(() => {
+    const currentVersionData = currentTask?.versions?.find(v => v.id === versionId);
+
     if (currentTask) {
       setTaskName(currentTask.name || '');
     }
@@ -33,8 +34,14 @@ const PromptEditor = ({ taskId, versionId }) => {
       setSystemPrompt(currentVersionData.system_prompt || 'You are a helpfull AI Assistant');
       setTaskDescription(currentVersionData.description || '');
       setVariables(currentVersionData.variables || {});
+    } else {
+      // Clear fields if no version is selected or found
+      setPromptText('');
+      setSystemPrompt('You are a helpfull AI Assistant');
+      setTaskDescription('');
+      setVariables({});
     }
-  }, [currentTask, currentVersionData]);
+  }, [versionId, currentTask]); // Depend directly on versionId and currentTask
 
   const extractedVariables = React.useMemo(() => {
     const matches = promptText.match(/\{\{(\w+)\}\}/g) || [];

@@ -171,7 +171,11 @@ function LLMEndpointForm({ endpoint, isEditing, onSave, onCancel }) {
     if (validateForm()) {
       setIsLoading(true);
       try {
-        await onSave(formData);
+        const dataToSave = {
+          ...formData,
+          contextSize: formData.contextSize === '' ? null : Number(formData.contextSize),
+        };
+        await onSave(dataToSave);
       } finally {
         setIsLoading(false);
       }

@@ -254,6 +254,31 @@ def delete_version(task_id: str, version_id: str):
         }
     }
 
+@app.delete("/api/tasks/{task_id}/versions/{version_id}/results/{timestamp}")
+def delete_history_item(task_id: str, version_id: str, timestamp: str):
+    task = tasks_table.get(where('id') == task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    version_index = next((i for i, v in enumerate(task["versions"]) if v["id"] == version_id), -1)
+    if version_index == -1:
+        raise HTTPException(status_code=404, detail="Version not found")
+
+    version = task["versions"][version_index]
+    
+    results = version.get("results", [])
+    result_index = next((i for i, r in enumerate(results) if r["timestamp"] == timestamp), -1)
+
+    if result_index == -1:
+        raise HTTPException(status_code=404, detail="History item not found")
+
+    results.pop(result_index)
+    
+    task["versions"][version_index]["results"] = results
+    tasks_table.update(task, where('id') == task_id)
+
+    return {"success": True, "message": "History item deleted successfully"}
+
 # 3. Template Variable Management
 @app.get("/api/templates/{task_id}/variables")
 def get_template_variables(task_id: str):
@@ -575,6 +600,8 @@ async def test_models_endpoint(request: TestEndpointModelsRequest):
         
         # Correctly construct the URL
         url = f"{base_url}/models"
+        print(f"{url=}")
+        print(f"{headers=}")
         
         async with aiohttp.ClientSession() as session:
             async with session.get(
@@ -657,6 +684,10 @@ async def test_chat_endpoint(request: TestEndpointChatRequest):
                 'temperature': 0.7
             }
             url = f"{base_url}/chat/completions"
+            
+        print(f"{base_url=} {api_key=} {model=} {message=}")
+        print(f"{headers=}")
+        print(f"{data=}")
         
         async with aiohttp.ClientSession() as session:
             async with session.post(
