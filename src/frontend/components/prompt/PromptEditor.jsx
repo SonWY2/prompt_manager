@@ -20,15 +20,6 @@ const PromptEditor = ({ taskId, versionId }) => {
   const [isPreviewMode, setIsPreviewMode] = useState(false);
   const [newVariable, setNewVariable] = useState({ name: '', value: '' });
   const [isEditingName, setIsEditingName] = useState(false);
-  const [collapsedSections, setCollapsedSections] = useState({
-    description: false,
-    system: false,
-    main: false,
-  });
-
-  const toggleSection = (section) => {
-    setCollapsedSections(prev => ({ ...prev, [section]: !prev[section] }));
-  };
 
   const currentTask = taskId ? tasks[taskId] : null;
   const currentVersionData = currentTask?.versions?.find(v => v.id === versionId);
@@ -236,73 +227,56 @@ const PromptEditor = ({ taskId, versionId }) => {
           /* Prompt Tab */
           <div className="flex flex-col h-full space-y-4">
             {/* Description */}
-            <div className="card flex flex-col">
-              <h3 className="text-sm font-medium mb-3 flex items-center justify-between cursor-pointer flex-shrink-0" onClick={() => toggleSection('description')}>
-                <span className="flex items-center gap-2">
-                  📝 Prompt Description
-                </span>
-                <svg className={`w-4 h-4 transition-transform ${collapsedSections.description ? 'transform -rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
+            <div className="card">
+              <h3 className="text-sm font-medium mb-3 flex items-center gap-2">
+                📝 Prompt Description
               </h3>
-              {!collapsedSections.description && (
-                <textarea
-                  value={taskDescription}
-                  onChange={(e) => setTaskDescription(e.target.value)}
-                  placeholder="Describe the purpose and usage of this prompt..."
-                  className="w-full p-3 bg-transparent border rounded text-sm"
-                  style={{
-                    borderColor: 'var(--border-primary)',
-                    color: 'var(--text-primary)',
-                    height: '80px' // Fixed height
-                  }}
-                />
-              )}
+              <textarea
+                value={taskDescription}
+                onChange={(e) => setTaskDescription(e.target.value)}
+                placeholder="Describe the purpose and usage of this prompt..."
+                className="w-full h-20 p-3 bg-transparent border rounded text-sm"
+                style={{
+                  borderColor: 'var(--border-primary)',
+                  color: 'var(--text-primary)'
+                }}
+              />
             </div>
 
             {/* System Prompt */}
-            <div className="card flex flex-col">
-              <h3 className="text-sm font-medium mb-3 flex items-center justify-between cursor-pointer flex-shrink-0" onClick={() => toggleSection('system')}>
-                <span className="flex items-center gap-2">
-                  🤖 System Prompt
-                </span>
-                <svg className={`w-4 h-4 transition-transform ${collapsedSections.system ? 'transform -rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
+            <div className="card">
+              <h3 className="text-sm font-medium mb-3 flex items-center gap-2">
+                🤖 System Prompt
               </h3>
-              {!collapsedSections.system && (
-                <textarea
-                  value={systemPrompt}
-                  onChange={(e) => setSystemPrompt(e.target.value)}
-                  placeholder="Define AI role and instructions..."
-                  className="w-full p-3 bg-transparent border rounded text-sm"
-                  style={{
-                    borderColor: 'var(--border-primary)',
-                    color: 'var(--text-primary)',
-                    height: '120px' // Fixed height
-                  }}
-                />
-              )}
+              <textarea
+                value={systemPrompt}
+                onChange={(e) => setSystemPrompt(e.target.value)}
+                placeholder="Define AI role and instructions..."
+                className="w-full h-24 p-3 bg-transparent border rounded text-sm"
+                style={{
+                  borderColor: 'var(--border-primary)',
+                  color: 'var(--text-primary)'
+                }}
+              />
             </div>
 
             {/* Main Prompt */}
             <div className="card flex flex-col flex-1">
-              <h3 className="text-sm font-medium mb-3 flex items-center justify-between cursor-pointer flex-shrink-0" onClick={() => toggleSection('main')}>
-                <span className="flex items-center gap-2">
-                  💬 Main Prompt
-                </span>
-                <svg className={`w-4 h-4 transition-transform ${collapsedSections.main ? 'transform -rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
+              <h3 className="text-sm font-medium mb-3 flex items-center gap-2">
+                💬 Main Prompt
               </h3>
-              {!collapsedSections.main && (
-                <textarea
-                  value={promptText}
-                  onChange={(e) => setPromptText(e.target.value)}
-                  placeholder="Enter prompt... (Use {{variable_name}} for variables)"
-                  className="w-full h-full p-3 bg-transparent border-none text-sm font-mono flex-1"
-                  style={{
-                    color: 'var(--text-primary)',
-                    fontFamily: 'SF Mono, Monaco, monospace',
-                    lineHeight: '1.5',
-                    resize: 'none'
-                  }}
-                />
-              )}
+              <textarea
+                value={promptText}
+                onChange={(e) => setPromptText(e.target.value)}
+                placeholder="Enter prompt... (Use {{variable_name}} for variables)"
+                className="w-full h-full p-3 bg-transparent border-none text-sm font-mono flex-1"
+                style={{
+                  color: 'var(--text-primary)',
+                  fontFamily: 'SF Mono, Monaco, monospace',
+                  lineHeight: '1.5',
+                  resize: 'none'
+                }}
+              />
             </div>
 
             {/* Preview */}
