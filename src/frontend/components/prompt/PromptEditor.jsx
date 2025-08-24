@@ -2,6 +2,165 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useStore } from '../../store.jsx';
 
+// Highlight Editor Component for syntax highlighting of variables
+const HighlightEditor = ({ value, onChange, placeholder, className, style }) => {
+  const editorRef = useRef(null);
+  const [isComposing, setIsComposing] = useState(false);
+
+  // Function to highlight variables in text
+  const highlightText = (text) => {
+    if (!text) return '';
+    
+    // Replace {{ }} variables with highlighted spans
+    return text.replace(/\{\{([^}]+)\}\}/g, (match, variable) => {
+      return `<span class="variable-highlight">{{${variable.trim()}}}</span>`;
+    });
+  };
+
+  // Update editor content when value changes
+  useEffect(() => {
+    if (editorRef.current && !isComposing) {
+      const selection = window.getSelection();
+      const range = selection.rangeCount > 0 ? selection.getRangeAt(0) : null;
+      
+      // Store cursor position more accurately
+      let cursorPosition = 0;
+      let shouldRestoreCursor = false;
+      
+      if (range && editorRef.current.contains(range.startContainer)) {
+        shouldRestoreCursor = true;
+        
+        // Walk through all text nodes to find current position
+        const walker = document.createTreeWalker(
+          editorRef.current,
+          NodeFilter.SHOW_TEXT,
+          null,
+          false
+        );
+        
+        let totalLength = 0;
+        while (walker.nextNode()) {
+          if (walker.currentNode === range.startContainer) {
+            cursorPosition = totalLength + range.startOffset;
+            break;
+          }
+          totalLength += walker.currentNode.textContent.length;
+        }
+      }
+      
+      // Always update innerHTML with highlighted content for real-time highlighting
+      editorRef.current.innerHTML = highlightText(value) || '';
+      
+      // Restore cursor position if needed
+      if (shouldRestoreCursor && value) {
+        setTimeout(() => {
+          try {
+            const walker = document.createTreeWalker(
+              editorRef.current,
+              NodeFilter.SHOW_TEXT,
+              null,
+              false
+            );
+            
+            let charCount = 0;
+            let targetNode = null;
+            let targetOffset = 0;
+            
+            while (walker.nextNode()) {
+              const node = walker.currentNode;
+              const nodeLength = node.textContent.length;
+              
+              if (charCount + nodeLength >= cursorPosition) {
+                targetNode = node;
+                targetOffset = Math.min(cursorPosition - charCount, nodeLength);
+                break;
+              }
+              
+              charCount += nodeLength;
+            }
+            
+            if (targetNode) {
+              const newRange = document.createRange();
+              const selection = window.getSelection();
+              
+              newRange.setStart(targetNode, targetOffset);
+              newRange.collapse(true);
+              
+              selection.removeAllRanges();
+              selection.addRange(newRange);
+            }
+          } catch (e) {
+            // Silently handle cursor restoration errors
+            console.warn('Cursor restoration failed:', e);
+          }
+        }, 0);
+      }
+    }
+  }, [value, isComposing]);
+
+  const handleInput = (e) => {
+    if (!isComposing && onChange) {
+      const text = e.target.innerText || '';
+      onChange(text);
+    }
+  };
+
+  const handleCompositionStart = () => {
+    setIsComposing(true);
+  };
+
+  const handleCompositionEnd = (e) => {
+    setIsComposing(false);
+    if (onChange) {
+      const text = e.target.innerText || '';
+      onChange(text);
+    }
+  };
+
+  const handlePaste = (e) => {
+    e.preventDefault();
+    const text = e.clipboardData.getData('text/plain');
+    document.execCommand('insertText', false, text);
+  };
+
+  const handleKeyDown = (e) => {
+    // Handle Enter key for consistent line breaks
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      document.execCommand('insertLineBreak');
+      return;
+    }
+    
+    // Handle Tab key (optional: insert spaces instead of losing focus)
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      document.execCommand('insertText', false, '  '); // Insert 2 spaces
+      return;
+    }
+  };
+
+  return (
+    <div
+      ref={editorRef}
+      contentEditable
+      className={`highlight-editor ${className || ''}`}
+      style={{
+        ...style,
+        whiteSpace: 'pre-wrap',
+        wordWrap: 'break-word',
+        outline: 'none',
+      }}
+      onInput={handleInput}
+      onCompositionStart={handleCompositionStart}
+      onCompositionEnd={handleCompositionEnd}
+      onPaste={handlePaste}
+      onKeyDown={handleKeyDown}
+      data-placeholder={placeholder}
+      suppressContentEditableWarning={true}
+    />
+  );
+};
+
 const PromptEditor = ({ taskId, versionId }) => {
   const {
     tasks,
@@ -360,16 +519,16 @@ const PromptEditor = ({ taskId, versionId }) => {
                 💬 Main Prompt
               </h3>
               {!collapsedSections.main && (
-                <textarea
+                <HighlightEditor
                   value={promptText}
-                  onChange={(e) => setPromptText(e.target.value)}
+                  onChange={setPromptText}
                   placeholder="Enter prompt... (Use {{variable_name}} for variables)"
-                  className="w-full h-full p-3 bg-transparent border-none text-sm font-mono flex-1"
+                  className="w-full h-full p-3 text-sm font-mono flex-1"
                   style={{
                     color: 'var(--text-primary)',
                     fontFamily: 'SF Mono, Monaco, monospace',
                     lineHeight: '1.5',
-                    resize: 'none'
+                    minHeight: '200px'
                   }}
                 />
               )}
@@ -524,3 +683,99 @@ const PromptEditor = ({ taskId, versionId }) => {
 };
 
 export default PromptEditor;
+
+// Add CSS for variable highlighting
+const addHighlightStyles = () => {
+  if (document.head.querySelector('[data-highlight-editor]')) {
+    return; // Styles already added
+  }
+  
+  const styleElement = document.createElement('style');
+  styleElement.setAttribute('data-highlight-editor', 'true');
+  styleElement.textContent = `
+    .highlight-editor {
+      position: relative;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      overflow-wrap: break-word;
+      line-height: 1.5;
+      background: var(--bg-tertiary);
+      border: 1px solid var(--border-primary);
+      border-radius: 6px;
+      transition: border-color 0.2s ease;
+    }
+    
+    .highlight-editor:focus {
+      border-color: var(--accent-primary);
+      box-shadow: 0 0 0 1px rgba(139, 92, 246, 0.2);
+    }
+    
+    .highlight-editor * {
+      white-space: pre-wrap;
+    }
+    
+    .highlight-editor:empty:before {
+      content: attr(data-placeholder);
+      color: var(--text-muted);
+      pointer-events: none;
+      font-style: italic;
+      white-space: pre-wrap;
+    }
+    
+    .variable-highlight {
+      background: linear-gradient(135deg, rgba(139, 92, 246, 0.15) 0%, rgba(168, 85, 247, 0.15) 100%);
+      color: var(--accent-primary);
+      padding: 1px 4px;
+      border-radius: 4px;
+      font-weight: 600;
+      border: 1px solid rgba(139, 92, 246, 0.25);
+      box-shadow: 0 1px 2px rgba(139, 92, 246, 0.1);
+      transition: all 0.2s ease;
+      display: inline;
+      margin: 0;
+      white-space: nowrap;
+    }
+    
+    .highlight-editor:focus .variable-highlight {
+      background: linear-gradient(135deg, rgba(139, 92, 246, 0.25) 0%, rgba(168, 85, 247, 0.25) 100%);
+      border-color: rgba(139, 92, 246, 0.4);
+      box-shadow: 0 2px 4px rgba(139, 92, 246, 0.15);
+    }
+    
+    .highlight-editor .variable-highlight:hover {
+      background: linear-gradient(135deg, rgba(139, 92, 246, 0.3) 0%, rgba(168, 85, 247, 0.3) 100%);
+      border-color: rgba(139, 92, 246, 0.5);
+      transform: translateY(-1px);
+    }
+    
+    /* Dark mode adjustments */
+    [data-theme="dark"] .variable-highlight {
+      background: linear-gradient(135deg, rgba(139, 92, 246, 0.2) 0%, rgba(168, 85, 247, 0.2) 100%);
+      border-color: rgba(139, 92, 246, 0.3);
+    }
+    
+    [data-theme="dark"] .highlight-editor:focus .variable-highlight {
+      background: linear-gradient(135deg, rgba(139, 92, 246, 0.3) 0%, rgba(168, 85, 247, 0.3) 100%);
+      border-color: rgba(139, 92, 246, 0.5);
+    }
+    
+    /* Fix for line breaks and spacing */
+    .highlight-editor br {
+      line-height: 1.5;
+    }
+    
+    .highlight-editor div {
+      display: inline;
+    }
+    
+    .highlight-editor p {
+      margin: 0;
+      display: inline;
+    }
+  `;
+  
+  document.head.appendChild(styleElement);
+};
+
+// Initialize styles when component is loaded
+addHighlightStyles();
