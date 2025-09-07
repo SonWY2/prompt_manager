@@ -63,6 +63,12 @@ class TaskCreate(BaseModel):
     taskId: str
     name: str
 
+# 부분 업데이트용 태스크 스키마
+class TaskUpdate(BaseModel):
+    name: Optional[str] = None
+    isFavorite: Optional[bool] = None
+    variables: Optional[Dict[str, Any]] = None
+
 class VersionCreate(BaseModel):
     versionId: str
     content: str
@@ -134,6 +140,10 @@ def read_root():
 @app.get("/api/tasks")
 def get_tasks():
     tasks_list = tasks_table.all()
+    # Ensure all tasks have the isFavorite field for frontend compatibility
+    for task in tasks_list:
+        if 'isFavorite' not in task:
+            task['isFavorite'] = False
     return {"tasks": tasks_list}
 
 @app.post("/api/tasks", status_code=201)
@@ -154,6 +164,23 @@ def create_task(task: TaskCreate):
         "success": True,
         "task": new_task
     }
+
+@app.patch("/api/tasks/{task_id}")
+def update_task(task_id: str, updates: TaskUpdate):
+    task = tasks_table.get(where('id') == task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    update_data = updates.dict(exclude_unset=True)
+    
+    task_data = dict(task)
+    for key, value in update_data.items():
+        task_data[key] = value
+
+    tasks_table.update(task_data, where('id') == task_id)
+    
+    return {"success": True, "task": task_data}
+
 
 @app.delete("/api/tasks/{task_id}")
 def delete_task(task_id: str):
