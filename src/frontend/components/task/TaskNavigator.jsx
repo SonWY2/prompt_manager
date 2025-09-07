@@ -3,7 +3,7 @@ import React, { useState, useMemo } from 'react';
 import { useStore } from '../../store.jsx';
 
 const TaskNavigator = ({ tasks, currentTask, onSelectTask }) => {
-  const { createTask, deleteTask } = useStore();
+  const { createTask, deleteTask, toggleFavorite } = useStore();
   const [activeTab, setActiveTab] = useState('all'); // all, recent, favorites
 
   const handleNewTask = async () => {
@@ -46,7 +46,19 @@ const TaskNavigator = ({ tasks, currentTask, onSelectTask }) => {
     return `${Math.floor(diffInHours / 24)} days ago`;
   };
 
-  const taskList = useMemo(() => Object.values(tasks), [tasks]);
+  const filteredTasks = useMemo(() => {
+    let taskArray = Object.values(tasks);
+
+    switch (activeTab) {
+      case 'recent':
+        return taskArray.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+      case 'favorites':
+        return taskArray.filter(task => task.isFavorite).sort((a, b) => a.name.localeCompare(b.name));
+      case 'all':
+      default:
+        return taskArray.sort((a, b) => a.name.localeCompare(b.name));
+    }
+  }, [tasks, activeTab]);
 
   return (
     <div className="h-full flex flex-col" style={{ background: 'var(--bg-secondary)' }}>
@@ -82,7 +94,7 @@ const TaskNavigator = ({ tasks, currentTask, onSelectTask }) => {
       {/* Task List */}
       <div className="flex-1 overflow-y-auto p-5">
         <div className="space-y-1">
-          {taskList.map(task => {
+          {filteredTasks.map(task => {
             const isActive = currentTask === task.id;
             const versionCount = task.versions ? Object.keys(task.versions).length : 0;
 
@@ -128,18 +140,29 @@ const TaskNavigator = ({ tasks, currentTask, onSelectTask }) => {
                     {versionCount} versions • Modified {formatTimeAgo(task.updatedAt)}
                   </div>
                 </div>
+                <button 
+                  className="favorite-btn opacity-0 group-hover:opacity-100 transition-opacity"
+                  onClick={(e) => {
+                    e.stopPropagation(); // Prevent task selection
+                    toggleFavorite(task.id);
+                  }}
+                >
+                  <span className={task.isFavorite ? 'text-yellow-400' : 'text-gray-500'}>
+                    {task.isFavorite ? '★' : '☆'}
+                  </span>
+                </button>
               </div>
             );
           })}
         </div>
 
         {/* Empty State */}
-        {Object.keys(tasks).length === 0 && (
+        {filteredTasks.length === 0 && (
           <div className="text-center py-12">
             <div className="text-4xl mb-4">📝</div>
-            <p className="text-muted mb-4">No tasks yet</p>
+            <p className="text-muted mb-4">No tasks in this view</p>
             <p className="text-muted">
-              Create your first task
+              {activeTab === 'favorites' ? 'Star some tasks to see them here.' : 'Create a new task to get started.'}
             </p>
           </div>
         )}

@@ -368,6 +368,47 @@ export const PromptProvider = ({ children }) => {
       throw error;
     }
   }, [currentTask]);
+
+  const toggleFavorite = useCallback(async (taskId) => {
+    const originalTask = tasks[taskId];
+    if (!originalTask) return;
+
+    const newIsFavorite = !originalTask.isFavorite;
+
+    // Optimistic update
+    setTasks(prevTasks => ({
+      ...prevTasks,
+      [taskId]: { ...originalTask, isFavorite: newIsFavorite },
+    }));
+
+    try {
+      const response = await fetch(apiUrl(`/api/tasks/${taskId}`), {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isFavorite: newIsFavorite }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.detail || 'Failed to update favorite status on the server');
+      }
+
+      // Final update from server response
+      setTasks(prevTasks => ({
+        ...prevTasks,
+        [taskId]: data.task,
+      }));
+    } catch (error) {
+      console.error('Error toggling favorite:', error);
+      // Revert the optimistic update
+      setTasks(prevTasks => ({
+        ...prevTasks,
+        [taskId]: originalTask,
+      }));
+      throw error;
+    }
+  }, [tasks]);
   
   // 템플릿 변수 관리 - loadVersions보다 먼저 정의
   const templateVariableLoadingRef = useRef(new Set()); // useRef로 변경
@@ -773,6 +814,13 @@ export const PromptProvider = ({ children }) => {
       checkServerStatus, // 서버 상태 체크 함수 추가
       createTask,
       deleteTask,
+      toggleFavorite,
+      // 함수
+      loadTasks,
+      checkServerStatus, // 서버 상태 체크 함수 추가
+      createTask,
+      deleteTask,
+      toggleFavorite,
       setCurrentTask: (taskId) => {
         console.log('currentTask 설정:', taskId);
         setCurrentTask(taskId);
