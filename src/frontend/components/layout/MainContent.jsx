@@ -31,15 +31,15 @@ const MainContent = ({ currentTask, currentVersion, view }) => {
 
   return (
     <>
-      <div className="tabs">
+      <div className="tab-container mb-2">
         <button
-          className={`tab-button ${activeTab === 'editor' ? 'active' : ''}`}
+          className={`tab ${activeTab === 'editor' ? 'active' : ''}`}
           onClick={() => setActiveTab('editor')}
         >
           Prompt Editor
         </button>
         <button
-          className={`tab-button ${activeTab === 'result' ? 'active' : ''}`}
+          className={`tab ${activeTab === 'result' ? 'active' : ''}`}
           onClick={() => setActiveTab('result')}
         >
           Result Viewer

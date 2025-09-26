@@ -3,15 +3,18 @@
 
 ## 📋 현재 설정 요약
 - **프론트엔드**: http://localhost:3030 (Vite 개발 서버)
-- **백엔드**: http://localhost:3000 (Express 서버)
+- **백엔드**: http://localhost:3000 (FastAPI/uvicorn)
 - **프록시**: /api/* 요청을 localhost:3000으로 전달
 
 ## 🔧 실행 단계
 
 ### 1단계: 서버 실행
 ```bash
-cd D:\workspace\prompt_manager
-npm run dev:all
+# Windows
+scripts\run_dev.bat
+
+# macOS/Linux
+python scripts/run_dev.py
 ```
 
 ### 2단계: 성공 확인 포인트
@@ -20,7 +23,7 @@ npm run dev:all
 ```
 서버 실행 중: http://localhost:3000
 허용된 프론트엔드 원본: ["http://localhost:3030", "http://127.0.0.1:3030", ...]
-데이터 저장 경로: D:\workspace\prompt_manager\data\prompt-data.json
+데이터 저장 경로: D:\workspace\prompt_manager\data\db.json
 ```
 
 #### ✅ 프론트엔드 개발 서버 로그 확인
@@ -39,14 +42,17 @@ ready in XXXms
 
 ### 포트 이미 사용 중인 경우
 ```bash
-# 다른 포트로 변경
-PORT=3031 npm run dev
+# 다른 포트로 변경 (Vite는 VITE_PORT 사용)
+# Windows (PowerShell/CMD)
+set VITE_PORT=3031 && npm run dev
+# macOS/Linux
+VITE_PORT=3031 npm run dev
 ```
 
 ### 백엔드 연결 실패 시
 1. 방화벽 확인
 2. 백엔드 서버 로그 확인
-3. `npm run backend` 단독 실행 테스트
+3. `python scripts/run_backend.py` 단독 실행 테스트
 
 ### CORS 오류 시
 - 현재 CORS 설정에 3030 포트가 포함되어 있어 문제없음

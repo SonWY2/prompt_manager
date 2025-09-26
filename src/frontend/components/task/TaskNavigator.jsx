@@ -101,37 +101,14 @@ const TaskNavigator = ({ tasks, currentTask, onSelectTask }) => {
             return (
               <div
                 key={task.id}
-                className="task-item group flex items-center justify-between"
-                style={{
-                  position: 'relative',
-                  padding: '10px 12px',
-                  marginBottom: '2px',
-                  borderRadius: '3px',
-                  cursor: 'pointer',
-                  transition: 'all 0.15s ease',
-                  background: isActive ? 'var(--accent-primary)' : 'transparent',
-                  color: isActive ? 'white' : 'var(--text-primary)',
-                  border: isActive ? '1px solid var(--accent-primary)' : '1px solid transparent'
-                }}
+                className={`task-item group flex items-center justify-between ${isActive ? 'is-active' : ''}`}
                 onClick={() => onSelectTask(task.id)}
-                onMouseEnter={(e) => {
-                  if (!isActive) {
-                    e.currentTarget.style.background = 'var(--bg-hover)';
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (!isActive) {
-                    e.currentTarget.style.background = 'transparent';
-                  }
-                }}
               >
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1">
                     <span className="text-sm">📄</span>
                     <span
-                      className={`text-sm font-medium truncate ${
-                        isActive ? 'text-white' : 'text-gray-300'
-                      }`}
+                      className="text-sm font-medium truncate"
                     >
                       {task.name}
                     </span>
@@ -141,13 +118,16 @@ const TaskNavigator = ({ tasks, currentTask, onSelectTask }) => {
                   </div>
                 </div>
                 <button 
-                  className="favorite-btn opacity-0 group-hover:opacity-100 transition-opacity"
+                  type="button"
+                  className={`favorite-btn opacity-0 group-hover:opacity-100 transition-opacity ${task.isFavorite ? 'is-fav' : ''}`}
+                  aria-pressed={task.isFavorite}
+                  title={task.isFavorite ? 'Remove from favorites' : 'Add to favorites'}
                   onClick={(e) => {
                     e.stopPropagation(); // Prevent task selection
                     toggleFavorite(task.id);
                   }}
                 >
-                  <span className={task.isFavorite ? 'text-yellow-400' : 'text-gray-500'}>
+                  <span>
                     {task.isFavorite ? '★' : '☆'}
                   </span>
                 </button>

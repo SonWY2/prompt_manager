@@ -11,7 +11,7 @@ SRC_DIR = ROOT_DIR / "src"
 
 def main():
     """Starts the backend and frontend servers."""
-    # Node backend (Express) listens here
+    # Python backend (FastAPI) listens here
     api_port = "3000"
     vite_port = "3030"
 

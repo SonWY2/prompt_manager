@@ -2,224 +2,137 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useStore } from '../../store.jsx';
 
-// Highlight Editor Component for syntax highlighting of variables
+ // Highlight Editor Component (overlay highlighter to avoid cursor jump)
 const HighlightEditor = ({ value, onChange, placeholder, className, style }) => {
-  const editorRef = useRef(null);
-  const [isComposing, setIsComposing] = useState(false);
+  const containerRef = useRef(null);
+  const textareaRef = useRef(null);
+  const overlayContentRef = useRef(null);
 
-  // Function to highlight variables in text
-  const highlightText = (text) => {
-    if (!text) return '';
-    
-    // Replace {{ }} variables with highlighted spans
-    return text.replace(/\{\{([^}]+)\}\}/g, (match, variable) => {
+  const escapeHtml = (text) => {
+    if (text == null) return '';
+    return String(text)
+      .replace(/&/g, '&')
+      .replace(/</g, '<')
+      .replace(/>/g, '>')
+      .replace(/"/g, '"')
+      .replace(/'/g, '&#39;');
+  };
+
+  const highlightedHTML = React.useMemo(() => {
+    if (!value) return '';
+    const escaped = escapeHtml(value);
+    // Create HTML where only variables are visible with highlighting, rest is transparent
+    return escaped.replace(/\{\{([^}]+)\}\}/g, (match, variable) => {
       return `<span class="variable-highlight">{{${variable.trim()}}}</span>`;
+    }).replace(/[^{}<>]+(?![^<]*>)/g, (match) => {
+      // Make all non-variable text transparent in overlay
+      return `<span style="color: transparent;">${match}</span>`;
     });
+  }, [value]);
+
+
+  const handleScrollSync = (e) => {
+    const t = e.currentTarget;
+    if (overlayContentRef.current) {
+      overlayContentRef.current.style.transform = `translate(${-t.scrollLeft}px, ${-t.scrollTop}px)`;
+    }
   };
 
-  // Update editor content when value changes
+  // Keep overlay transform in sync if value changes and textarea has scrolled
   useEffect(() => {
-    if (editorRef.current && !isComposing) {
-      const currentHTML = editorRef.current.innerHTML;
-      const expectedHTML = highlightText(value) || '';
-      
-      // Only update if HTML content actually needs to change
-      if (currentHTML !== expectedHTML) {
-        const selection = window.getSelection();
-        const range = selection.rangeCount > 0 ? selection.getRangeAt(0) : null;
-        
-        // Store cursor position more accurately
-        let cursorPosition = 0;
-        let shouldRestoreCursor = false;
-        
-        if (range && editorRef.current.contains(range.startContainer)) {
-          shouldRestoreCursor = true;
-          
-          // Calculate cursor position by counting characters
-          const textContent = editorRef.current.textContent || '';
-          const rangeBefore = range.cloneRange();
-          rangeBefore.selectNodeContents(editorRef.current);
-          rangeBefore.setEnd(range.startContainer, range.startOffset);
-          cursorPosition = rangeBefore.toString().length;
-        }
-        
-        // Update innerHTML with highlighted content
-        editorRef.current.innerHTML = expectedHTML;
-        
-        // Restore cursor position if needed
-        if (shouldRestoreCursor) {
-          requestAnimationFrame(() => {
-            try {
-              const textContent = editorRef.current.textContent || '';
-              
-              // Ensure cursor position is within bounds
-              cursorPosition = Math.min(cursorPosition, textContent.length);
-              
-              if (cursorPosition === 0) {
-                // If cursor should be at the beginning
-                const firstTextNode = getFirstTextNode(editorRef.current);
-                if (firstTextNode) {
-                  const newRange = document.createRange();
-                  newRange.setStart(firstTextNode, 0);
-                  newRange.collapse(true);
-                  selection.removeAllRanges();
-                  selection.addRange(newRange);
-                }
-                return;
-              }
-              
-              // Find the correct text node and offset
-              const { node, offset } = findTextNodeAtPosition(editorRef.current, cursorPosition);
-              
-              if (node) {
-                const newRange = document.createRange();
-                newRange.setStart(node, Math.min(offset, node.textContent.length));
-                newRange.collapse(true);
-                
-                selection.removeAllRanges();
-                selection.addRange(newRange);
-              }
-            } catch (e) {
-              console.warn('Cursor restoration failed:', e);
-              // Fallback: place cursor at the end
-              try {
-                const lastTextNode = getLastTextNode(editorRef.current);
-                if (lastTextNode) {
-                  const newRange = document.createRange();
-                  newRange.setStart(lastTextNode, lastTextNode.textContent.length);
-                  newRange.collapse(true);
-                  selection.removeAllRanges();
-                  selection.addRange(newRange);
-                }
-              } catch (fallbackError) {
-                console.warn('Fallback cursor placement failed:', fallbackError);
-              }
-            }
-          });
-        }
-      }
+    if (overlayContentRef.current && textareaRef.current) {
+      const t = textareaRef.current;
+      overlayContentRef.current.style.transform = `translate(${-t.scrollLeft}px, ${-t.scrollTop}px)`;
     }
-  }, [value, isComposing]);
-  
-  // Helper function to find first text node
-  const getFirstTextNode = (element) => {
-    const walker = document.createTreeWalker(
-      element,
-      NodeFilter.SHOW_TEXT,
-      null,
-      false
-    );
-    return walker.nextNode();
-  };
-  
-  // Helper function to find last text node  
-  const getLastTextNode = (element) => {
-    const walker = document.createTreeWalker(
-      element,
-      NodeFilter.SHOW_TEXT,
-      null,
-      false
-    );
-    let lastNode = null;
-    while (walker.nextNode()) {
-      lastNode = walker.currentNode;
-    }
-    return lastNode;
-  };
-  
-  // Helper function to find text node at specific position
-  const findTextNodeAtPosition = (element, position) => {
-    const walker = document.createTreeWalker(
-      element,
-      NodeFilter.SHOW_TEXT,
-      null,
-      false
-    );
-    
-    let currentPosition = 0;
-    
-    while (walker.nextNode()) {
-      const node = walker.currentNode;
-      const nodeLength = node.textContent.length;
-      
-      if (currentPosition + nodeLength >= position) {
-        return {
-          node: node,
-          offset: position - currentPosition
-        };
-      }
-      
-      currentPosition += nodeLength;
-    }
-    
-    // If position is beyond content, return last text node
-    const lastNode = getLastTextNode(element);
-    return {
-      node: lastNode,
-      offset: lastNode ? lastNode.textContent.length : 0
-    };
-  };
-
-  const handleInput = (e) => {
-    if (!isComposing && onChange) {
-      const text = e.target.innerText || '';
-      onChange(text);
-    }
-  };
-
-  const handleCompositionStart = () => {
-    setIsComposing(true);
-  };
-
-  const handleCompositionEnd = (e) => {
-    setIsComposing(false);
-    if (onChange) {
-      const text = e.target.innerText || '';
-      onChange(text);
-    }
-  };
-
-  const handlePaste = (e) => {
-    e.preventDefault();
-    const text = e.clipboardData.getData('text/plain');
-    document.execCommand('insertText', false, text);
-  };
-
-  const handleKeyDown = (e) => {
-    // Handle Enter key for consistent line breaks
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      document.execCommand('insertLineBreak');
-      return;
-    }
-    
-    // Handle Tab key (optional: insert spaces instead of losing focus)
-    if (e.key === 'Tab') {
-      e.preventDefault();
-      document.execCommand('insertText', false, '  '); // Insert 2 spaces
-      return;
-    }
-  };
+  }, [value]);
 
   return (
     <div
-      ref={editorRef}
-      contentEditable
+      ref={containerRef}
       className={`highlight-editor ${className || ''}`}
       style={{
-        ...style,
-        whiteSpace: 'pre-wrap',
-        wordWrap: 'break-word',
-        outline: 'none',
+        position: 'relative',
+        // container keeps visual styles via existing CSS + incoming style
+        ...style
       }}
-      onInput={handleInput}
-      onCompositionStart={handleCompositionStart}
-      onCompositionEnd={handleCompositionEnd}
-      onPaste={handlePaste}
-      onKeyDown={handleKeyDown}
-      data-placeholder={placeholder}
-      suppressContentEditableWarning={true}
-    />
+    >
+      {/* Highlight overlay - only shows variable highlighting */}
+      <div
+        aria-hidden="true"
+        className="highlight-overlay"
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          overflow: 'hidden',
+          pointerEvents: 'none',
+          zIndex: 1,
+          padding: '12px',
+          margin: 0,
+          border: 'none',
+          fontFamily: 'inherit',
+          fontSize: '13px',
+          lineHeight: '1.5',
+          boxSizing: 'border-box'
+        }}
+      >
+        <div
+          ref={overlayContentRef}
+          className="overlay-content"
+          style={{
+            whiteSpace: 'pre-wrap',
+            wordWrap: 'break-word',
+            overflowWrap: 'break-word',
+            minHeight: '100%',
+            fontFamily: 'inherit',
+            fontSize: 'inherit',
+            lineHeight: 'inherit',
+            padding: 0,
+            margin: 0,
+            border: 'none',
+            color: 'transparent',
+            boxSizing: 'border-box'
+          }}
+          dangerouslySetInnerHTML={{ __html: highlightedHTML }}
+        />
+      </div>
+
+      {/* Real input (caret/selection lives here); never rewrite DOM so no cursor jump */}
+      <textarea
+        ref={textareaRef}
+        value={value}
+        onChange={(e) => onChange && onChange(e.target.value)}
+        onScroll={handleScrollSync}
+        placeholder={placeholder}
+        spellCheck={false}
+        autoCorrect="off"
+        autoCapitalize="off"
+        className="highlight-input"
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          width: '100%',
+          height: '100%',
+          background: 'transparent',
+          color: 'var(--text-primary)',
+          border: 'none',
+          resize: 'none',
+          outline: 'none',
+          fontFamily: 'inherit',
+          fontSize: '13px',
+          lineHeight: '1.5',
+          padding: '12px',
+          margin: 0,
+          boxSizing: 'border-box',
+          zIndex: 2
+        }}
+      />
+    </div>
   );
 };
 
@@ -605,7 +518,7 @@ const PromptEditor = ({ taskId, versionId }) => {
             
             {!collapsedSections.description && (
               <div 
-                className="w-full h-2 my-2 cursor-row-resize bg-gray-200 dark:bg-gray-700 hover:bg-blue-400 transition-colors"
+                className="editor-divider my-2 cursor-row-resize"
                 onMouseDown={(e) => onDragStart(e, 'description')}
               />
             )}
@@ -634,7 +547,7 @@ const PromptEditor = ({ taskId, versionId }) => {
 
             {!collapsedSections.system && (
                <div 
-                className="w-full h-2 my-2 cursor-row-resize bg-gray-200 dark:bg-gray-700 hover:bg-blue-400 transition-colors"
+                className="editor-divider my-2 cursor-row-resize"
                 onMouseDown={(e) => onDragStart(e, 'system')}
               />
             )}
@@ -848,7 +761,8 @@ const addHighlightStyles = () => {
       transition: border-color 0.2s ease;
     }
     
-    .highlight-editor:focus {
+    .highlight-editor:focus,
+    .highlight-editor:focus-within {
       border-color: var(--accent-primary);
       box-shadow: 0 0 0 1px rgba(139, 92, 246, 0.2);
     }
@@ -857,6 +771,41 @@ const addHighlightStyles = () => {
       white-space: pre-wrap;
     }
     
+    .highlight-editor .highlight-input {
+      background: transparent !important;
+      border: none !important;
+      box-shadow: none !important;
+      outline: none !important;
+      resize: none !important;
+      transform: none !important;
+      color: var(--text-primary) !important;
+      caret-color: var(--text-primary);
+      font: inherit !important;
+      line-height: inherit !important;
+      padding: inherit !important;
+    }
+
+    .highlight-editor .highlight-input:focus {
+      border: none !important;
+      box-shadow: none !important;
+      outline: none !important;
+      background: transparent !important;
+      transform: none !important;
+    }
+
+    .highlight-editor .overlay-content .variable-highlight {
+      color: var(--accent-primary) !important;
+      background: linear-gradient(135deg, rgba(139, 92, 246, 0.3) 0%, rgba(168, 85, 247, 0.3) 100%);
+      border: 1px solid rgba(139, 92, 246, 0.4);
+      border-radius: 3px;
+      padding: 1px 3px;
+      margin: 0;
+      display: inline;
+      font-weight: 600;
+      box-decoration-break: clone;
+      -webkit-box-decoration-break: clone;
+    }
+
     .highlight-editor:empty:before {
       content: attr(data-placeholder);
       color: var(--text-muted);
@@ -876,7 +825,14 @@ const addHighlightStyles = () => {
       transition: all 0.2s ease;
       display: inline;
       margin: 0;
-      white-space: nowrap;
+      white-space: inherit;
+    }
+    /* Overlay variable text color */
+    .highlight-editor .overlay-content .variable-highlight {
+      color: transparent !important; /* hide overlay text; show only background */
+      -webkit-box-decoration-break: clone;
+      box-decoration-break: clone;
+      font-weight: 700;
     }
     
     .highlight-editor:focus .variable-highlight {
@@ -906,14 +862,23 @@ const addHighlightStyles = () => {
     .highlight-editor br {
       line-height: 1.5;
     }
-    
-    .highlight-editor div {
-      display: inline;
+
+    /* Overlay content sync */
+    .highlight-editor .overlay-content {
+      font: inherit;
+      line-height: inherit;
+      padding: inherit;
+      white-space: pre-wrap;
+      word-break: break-word;
     }
-    
+
+    /* Remove duplicate styles - already defined above */
+
+    /* Prevent inline forcing that broke layout */
+    .highlight-editor div,
     .highlight-editor p {
       margin: 0;
-      display: inline;
+      display: block;
     }
   `;
   
