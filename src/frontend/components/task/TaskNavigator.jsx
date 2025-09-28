@@ -1,10 +1,66 @@
 // src/frontend/components/task/TaskNavigator.jsx
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useStore } from '../../store.jsx';
 
 const TaskNavigator = ({ tasks, currentTask, onSelectTask }) => {
   const { createTask, deleteTask, toggleFavorite } = useStore();
   const [activeTab, setActiveTab] = useState('all'); // all, recent, favorites
+  const [containerWidth, setContainerWidth] = useState(null);
+  const tabContainerRef = useRef(null);
+
+  // 컨테이너 너비 모니터링
+  useEffect(() => {
+    const updateWidth = () => {
+      if (tabContainerRef.current) {
+        const width = tabContainerRef.current.offsetWidth;
+        setContainerWidth(width);
+        console.log('[TaskNavigator] Tab container width:', width);
+      }
+    };
+
+    // 초기 너비 설정
+    updateWidth();
+
+    // 리사이즈 이벤트 리스너
+    window.addEventListener('resize', updateWidth);
+    
+    return () => {
+      window.removeEventListener('resize', updateWidth);
+    };
+  }, []);
+
+  // 반응형 탭 텍스트 결정
+  const getTabText = (tabType) => {
+    if (containerWidth === null) return tabType.charAt(0).toUpperCase() + tabType.slice(1);
+    
+    // 매우 작은 화면 (200px 미만)에서는 아이콘/짧은 텍스트 사용
+    if (containerWidth < 200) {
+      switch(tabType) {
+        case 'all': return 'All';
+        case 'recent': return 'New';
+        case 'favorites': return '★';
+        default: return tabType;
+      }
+    }
+    
+    // 작은 화면 (280px 미만)에서는 줄인 텍스트 사용
+    if (containerWidth < 280) {
+      switch(tabType) {
+        case 'all': return 'All';
+        case 'recent': return 'Recent';
+        case 'favorites': return 'Fav';
+        default: return tabType;
+      }
+    }
+    
+    // 기본 텍스트
+    switch(tabType) {
+      case 'all': return 'All';
+      case 'recent': return 'Recent';
+      case 'favorites': return 'Favorites';
+      default: return tabType.charAt(0).toUpperCase() + tabType.slice(1);
+    }
+  };
 
   const handleNewTask = async () => {
     const taskName = prompt("Enter a name for the new task:");
@@ -69,24 +125,27 @@ const TaskNavigator = ({ tasks, currentTask, onSelectTask }) => {
         </div>
 
         {/* Tabs */}
-        <div className="tab-container">
+        <div className="tab-container" ref={tabContainerRef}>
           <button 
             className={`tab ${activeTab === 'all' ? 'active' : ''}`}
             onClick={() => setActiveTab('all')}
+            title="All tasks"
           >
-            All
+            {getTabText('all')}
           </button>
           <button 
             className={`tab ${activeTab === 'recent' ? 'active' : ''}`}
             onClick={() => setActiveTab('recent')}
+            title="Recently modified tasks"
           >
-            Recent
+            {getTabText('recent')}
           </button>
           <button 
             className={`tab ${activeTab === 'favorites' ? 'active' : ''}`}
             onClick={() => setActiveTab('favorites')}
+            title="Favorite tasks"
           >
-            Favorites
+            {getTabText('favorites')}
           </button>
         </div>
       </div>

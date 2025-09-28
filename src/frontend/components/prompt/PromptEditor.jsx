@@ -37,8 +37,8 @@ const HighlightEditor = ({ value, onChange, onBlur, placeholder, className, styl
           </span>
         );
         return element;
-      } else if (part.length > 0 && part.trim().length > 0) {
-        // This is regular text - make it transparent (but skip whitespace-only strings)
+      } else if (part.length > 0) {
+        // Render ALL text parts (including whitespace) as transparent to maintain layout
         const element = (
           <span 
             key={index} 
@@ -50,14 +50,18 @@ const HighlightEditor = ({ value, onChange, onBlur, placeholder, className, styl
           </span>
         );
         return element;
-      } else if (part.length > 0) {
-        // Skip whitespace-only parts (spaces, newlines, tabs)
-        return null;
       } else {
-        // Skip empty parts
-        return null;
+        // 빈 문자열도 빈 span으로 렌더링해서 위치를 유지
+        const element = (
+          <span 
+            key={index}
+          >
+            {part}
+          </span>
+        );
+        return element;
       }
-    }).filter(Boolean);
+    });
     
     return renderedElements;
   };
@@ -69,14 +73,41 @@ const HighlightEditor = ({ value, onChange, onBlur, placeholder, className, styl
     }
   };
 
+  // Force re-sync positions on initial render or value change
+  const forcePositionSync = useCallback(() => {
+    if (overlayContentRef.current && textareaRef.current) {
+      const t = textareaRef.current;
+      const overlay = overlayContentRef.current;
+      
+      overlay.style.transform = `translate(${-t.scrollLeft}px, ${-t.scrollTop}px)`;
+    }
+  }, [value]);
+
   // Keep overlay transform in sync if value changes and textarea has scrolled
   useEffect(() => {
     if (overlayContentRef.current && textareaRef.current) {
       const t = textareaRef.current;
       overlayContentRef.current.style.transform = `translate(${-t.scrollLeft}px, ${-t.scrollTop}px)`;
-      
     }
   }, [value]);
+
+  // Force position sync on mount and resize events
+  useEffect(() => {
+    const resizeObserver = new ResizeObserver(() => {
+      setTimeout(forcePositionSync, 10);
+    });
+
+    if (containerRef.current) {
+      resizeObserver.observe(containerRef.current);
+    }
+
+    // Initial sync
+    setTimeout(forcePositionSync, 10);
+
+    return () => {
+      resizeObserver.disconnect();
+    };
+  }, [forcePositionSync]);
 
   return (
     <div
@@ -449,6 +480,11 @@ const PromptEditor = ({ taskId, versionId }) => {
   const handleNewVersion = async () => {
     if (!taskId) return;
     try {
+      console.log('🌿 [NEW VERSION] 새 버전 생성 시작:', {
+        태스크ID: taskId,
+        현재버전수: currentTask?.versions?.length || 0
+      });
+      
       const versionName = prompt('새 버전 이름을 입력하세요:');
       if (versionName) {
         // 새 버전은 빈 상태에서 시작해야 합니다
@@ -456,10 +492,23 @@ const PromptEditor = ({ taskId, versionId }) => {
         const defaultSystemPrompt = 'You are a helpful AI Assistant';
         const emptyDescription = '';
         
+        console.log('🌿 [NEW VERSION] 새 버전 생성 실행:', {
+          버전명: versionName,
+          초기내용길이: emptyContent.length,
+          기본시스템프롬프트: defaultSystemPrompt
+        });
+        
         await createVersion(taskId, versionName, emptyContent, defaultSystemPrompt, emptyDescription);
+        
+        console.log('✅ [NEW VERSION] 새 버전 생성 완료:', {
+          버전명: versionName,
+          생성후전체버전수: (currentTask?.versions?.length || 0) + 1
+        });
+      } else {
+        console.log('🚫 [NEW VERSION] 새 버전 생성 취소됨');
       }
     } catch (error) {
-      console.error('버전 생성 실패:', error);
+      console.error('❌ [NEW VERSION] 버전 생성 실패:', error);
     }
   };
 
@@ -468,9 +517,23 @@ const PromptEditor = ({ taskId, versionId }) => {
     const currentVersionData = currentTask?.versions?.find(v => v.id === versionId);
     if (!currentVersionData) return;
 
-    const newName = prompt(`Enter a name for the copied version:`, `${currentVersionData.name} (Copy)`);
+    const defaultCopyName = `${currentVersionData.name} (Copy)`;
+    console.log('📋 [COPY VERSION] 복사 시작:', {
+      원본버전ID: versionId,
+      원본버전명: currentVersionData.name,
+      제안된이름: defaultCopyName,
+      전체버전수: currentTask?.versions?.length || 0
+    });
+
+    const newName = prompt(`Enter a name for the copied version:`, defaultCopyName);
     if (newName) {
       try {
+        console.log('📋 [COPY VERSION] 복사 실행:', {
+          새버전명: newName,
+          복사할내용길이: currentVersionData.content?.length || 0,
+          시스템프롬프트길이: currentVersionData.system_prompt?.length || 0
+        });
+        
         await createVersion(
           taskId,
           newName,
@@ -478,9 +541,16 @@ const PromptEditor = ({ taskId, versionId }) => {
           currentVersionData.system_prompt,
           currentVersionData.description
         );
+        
+        console.log('✅ [COPY VERSION] 복사 완료:', {
+          새버전명: newName,
+          복사후전체버전수: (currentTask?.versions?.length || 0) + 1
+        });
       } catch (error) {
-        console.error('Failed to copy version:', error);
+        console.error('❌ [COPY VERSION] 복사 실패:', error);
       }
+    } else {
+      console.log('🚫 [COPY VERSION] 복사 취소됨');
     }
   };
 
@@ -657,22 +727,57 @@ const PromptEditor = ({ taskId, versionId }) => {
 
         {/* Version Timeline */}
         {currentTask.versions && currentTask.versions.length > 0 && (
-          <div className="version-timeline">
+          <div 
+            className="version-timeline"
+            onScroll={(e) => {
+              console.log('🔄 [VERSION TIMELINE] 스크롤 위치:', {
+                scrollLeft: e.target.scrollLeft,
+                scrollWidth: e.target.scrollWidth,
+                clientWidth: e.target.clientWidth,
+                isAtStart: e.target.scrollLeft === 0,
+                isAtEnd: e.target.scrollLeft + e.target.clientWidth >= e.target.scrollWidth - 1
+              });
+            }}
+            ref={(el) => {
+              if (el && currentTask.versions.length > 5) {
+                console.log('📊 [VERSION TIMELINE] 많은 버전 감지:', {
+                  버전수: currentTask.versions.length,
+                  컨테이너너비: el.clientWidth,
+                  전체너비: el.scrollWidth,
+                  스크롤가능: el.scrollWidth > el.clientWidth
+                });
+              }
+            }}
+          >
             <div className="timeline-line"></div>
-            {currentTask.versions.map((version, index) => (
-              <div
-                key={version.id}
-                className="timeline-item"
-                onClick={() => setCurrentVersion(version.id)}
-              >
-                <div 
-                  className={`timeline-dot ${currentVersion === version.id ? 'active' : ''}`}
-                />
-                <div className={`timeline-label ${currentVersion === version.id ? 'active' : ''}`}>
-                  {version.name || `v${index + 1}`}
+            {currentTask.versions.map((version, index) => {
+              const isActive = currentVersion === version.id;
+              const versionName = version.name || `v${index + 1}`;
+              
+              return (
+                <div
+                  key={version.id}
+                  className="timeline-item"
+                  onClick={() => {
+                    console.log('🎯 [VERSION TIMELINE] 버전 클릭:', {
+                      버전ID: version.id,
+                      버전이름: versionName,
+                      인덱스: index,
+                      활성상태: isActive,
+                      전체버전수: currentTask.versions.length
+                    });
+                    setCurrentVersion(version.id);
+                  }}
+                >
+                  <div 
+                    className={`timeline-dot ${isActive ? 'active' : ''}`}
+                  />
+                  <div className={`timeline-label ${isActive ? 'active' : ''}`}>
+                    {versionName}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
 
@@ -1025,6 +1130,7 @@ const addHighlightStyles = () => {
       transition: border-color 0.2s ease;
     }
     
+    
     .highlight-editor:focus,
     .highlight-editor:focus-within {
       border-color: var(--accent-primary);
@@ -1044,9 +1150,7 @@ const addHighlightStyles = () => {
       transform: none !important;
       color: var(--text-primary) !important;
       caret-color: var(--text-primary);
-      font: inherit !important;
-      line-height: inherit !important;
-      padding: inherit !important;
+      /* 명시적 스타일 유지 - inherit 제거 */
     }
 
     .highlight-editor .highlight-input:focus {
@@ -1058,7 +1162,7 @@ const addHighlightStyles = () => {
     }
 
     .highlight-editor .overlay-content .variable-highlight {
-      color: var(--accent-primary) !important;
+      color: transparent !important;
       background: linear-gradient(135deg, rgba(139, 92, 246, 0.3) 0%, rgba(168, 85, 247, 0.3) 100%);
       border: 1px solid rgba(139, 92, 246, 0.4);
       border-radius: 3px;
@@ -1091,13 +1195,7 @@ const addHighlightStyles = () => {
       margin: 0;
       white-space: inherit;
     }
-    /* Overlay variable text color */
-    .highlight-editor .overlay-content .variable-highlight {
-      color: transparent !important; /* hide overlay text; show only background */
-      -webkit-box-decoration-break: clone;
-      box-decoration-break: clone;
-      font-weight: 700;
-    }
+    /* Overlay variable text color - 중복 제거됨, 위에서 통합 처리 */
     
     .highlight-editor:focus .variable-highlight {
       background: linear-gradient(135deg, rgba(139, 92, 246, 0.25) 0%, rgba(168, 85, 247, 0.25) 100%);
@@ -1129,11 +1227,9 @@ const addHighlightStyles = () => {
 
     /* Overlay content sync */
     .highlight-editor .overlay-content {
-      font: inherit;
-      line-height: inherit;
-      padding: inherit;
       white-space: pre-wrap;
       word-break: break-word;
+      /* 스타일은 인라인에서 명시적으로 설정됨 */
     }
 
     /* Remove duplicate styles - already defined above */
