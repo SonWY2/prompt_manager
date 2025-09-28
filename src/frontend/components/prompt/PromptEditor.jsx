@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useStore } from '../../store.jsx';
 
  // Highlight Editor Component (overlay highlighter to avoid cursor jump)
-const HighlightEditor = ({ value, onChange, placeholder, className, style }) => {
+const HighlightEditor = ({ value, onChange, onBlur, placeholder, className, style }) => {
   const containerRef = useRef(null);
   const textareaRef = useRef(null);
   const overlayContentRef = useRef(null);
@@ -18,18 +18,49 @@ const HighlightEditor = ({ value, onChange, placeholder, className, style }) => 
       .replace(/'/g, '&#39;');
   };
 
-  const highlightedHTML = React.useMemo(() => {
-    if (!value) return '';
-    const escaped = escapeHtml(value);
-    // Create HTML where only variables are visible with highlighting, rest is transparent
-    return escaped.replace(/\{\{([^}]+)\}\}/g, (match, variable) => {
-      return `<span class="variable-highlight">{{${variable.trim()}}}</span>`;
-    }).replace(/[^{}<>]+(?![^<]*>)/g, (match) => {
-      // Make all non-variable text transparent in overlay
-      return `<span style="color: transparent;">${match}</span>`;
-    });
-  }, [value]);
-
+  const renderHighlightedContent = (text) => {
+    if (!text) return null;
+    
+    // Split text by variables and render each part
+    const parts = text.split(/(\{\{[^}]+\}\})/g);
+    
+    const renderedElements = parts.map((part, index) => {
+      if (part.match(/\{\{[^}]+\}\}/)) {
+        // This is a variable
+        const variable = part.slice(2, -2).trim();
+        const element = (
+          <span 
+            key={index} 
+            className="variable-highlight"
+          >
+            {`{{${variable}}}`}
+          </span>
+        );
+        return element;
+      } else if (part.length > 0 && part.trim().length > 0) {
+        // This is regular text - make it transparent (but skip whitespace-only strings)
+        const element = (
+          <span 
+            key={index} 
+            style={{ 
+              color: 'transparent'
+            }}
+          >
+            {part}
+          </span>
+        );
+        return element;
+      } else if (part.length > 0) {
+        // Skip whitespace-only parts (spaces, newlines, tabs)
+        return null;
+      } else {
+        // Skip empty parts
+        return null;
+      }
+    }).filter(Boolean);
+    
+    return renderedElements;
+  };
 
   const handleScrollSync = (e) => {
     const t = e.currentTarget;
@@ -43,6 +74,7 @@ const HighlightEditor = ({ value, onChange, placeholder, className, style }) => 
     if (overlayContentRef.current && textareaRef.current) {
       const t = textareaRef.current;
       overlayContentRef.current.style.transform = `translate(${-t.scrollLeft}px, ${-t.scrollTop}px)`;
+      
     }
   }, [value]);
 
@@ -95,8 +127,9 @@ const HighlightEditor = ({ value, onChange, placeholder, className, style }) => 
             color: 'transparent',
             boxSizing: 'border-box'
           }}
-          dangerouslySetInnerHTML={{ __html: highlightedHTML }}
-        />
+        >
+          {renderHighlightedContent(value)}
+        </div>
       </div>
 
       {/* Real input (caret/selection lives here); never rewrite DOM so no cursor jump */}
@@ -104,6 +137,7 @@ const HighlightEditor = ({ value, onChange, placeholder, className, style }) => 
         ref={textareaRef}
         value={value}
         onChange={(e) => onChange && onChange(e.target.value)}
+        onBlur={onBlur}
         onScroll={handleScrollSync}
         placeholder={placeholder}
         spellCheck={false}
@@ -154,6 +188,11 @@ const PromptEditor = ({ taskId, versionId }) => {
   const [isPreviewMode, setIsPreviewMode] = useState(false);
   const [newVariable, setNewVariable] = useState({ name: '', value: '' });
   const [isEditingName, setIsEditingName] = useState(false);
+  
+  // 자동 저장 관련 상태
+  const [saveStatus, setSaveStatus] = useState('saved'); // 'saving', 'saved', 'error'
+  const autoSaveTimeoutRef = useRef(null);
+  const lastSavedContentRef = useRef({ promptText: '', systemPrompt: '', taskDescription: '' });
 
   const currentTask = taskId ? tasks[taskId] : null;
 
@@ -180,35 +219,67 @@ const PromptEditor = ({ taskId, versionId }) => {
     if (currentTask) {
       setTaskName(currentTask.name || '');
     }
+    
     if (currentVersionData) {
-      setPromptText(currentVersionData.content || '');
-      setSystemPrompt(currentVersionData.system_prompt || 'You are a helpfull AI Assistant');
-      setTaskDescription(currentVersionData.description || '');
+      // 기존 버전 데이터 로드
+      const content = currentVersionData.content || '';
+      const system_prompt = currentVersionData.system_prompt || 'You are a helpfull AI Assistant';
+      const description = currentVersionData.description || '';
+      
+      setPromptText(content);
+      setSystemPrompt(system_prompt);
+      setTaskDescription(description);
+      
+      // 초기 로드시 마지막 저장된 내용 설정
+      lastSavedContentRef.current = {
+        promptText: content,
+        systemPrompt: system_prompt,
+        taskDescription: description
+      };
+      setSaveStatus('saved');
     } else {
       // Clear fields if no version is selected or found
+      const defaultSystemPrompt = 'You are a helpfull AI Assistant';
+      
       setPromptText('');
-      setSystemPrompt('You are a helpfull AI Assistant');
+      setSystemPrompt(defaultSystemPrompt);
       setTaskDescription('');
+      
+      // 빈 상태로 초기화
+      lastSavedContentRef.current = {
+        promptText: '',
+        systemPrompt: defaultSystemPrompt,
+        taskDescription: ''
+      };
     }
   }, [versionId, currentTask]); // Depend directly on versionId and currentTask
 
   const extractedVariables = React.useMemo(() => {
     if (!currentTask) return [];
+    
     const allPromptsContent = new Set();
+    
+    // 기존 버전들의 내용 수집
     if (currentTask.versions) {
-      currentTask.versions.forEach(version => {
+      currentTask.versions.forEach((version) => {
         if (version.content) allPromptsContent.add(version.content);
         if (version.system_prompt) allPromptsContent.add(version.system_prompt);
       });
     }
-    allPromptsContent.add(promptText);
-    allPromptsContent.add(systemPrompt);
+    
+    // 현재 편집 중인 내용 추가
+    if (promptText) allPromptsContent.add(promptText);
+    if (systemPrompt) allPromptsContent.add(systemPrompt);
+    
     const allMatches = [];
-    allPromptsContent.forEach(p => {
-      const matches = p.match(/\{\{(\w+)\}\}/g) || [];
+    allPromptsContent.forEach((p) => {
+      // 더 정확한 변수 추출을 위해 영문자, 숫자, 언더스코어, 하이픈만 허용
+      const matches = p.match(/\{\{([a-zA-Z_][a-zA-Z0-9_-]*)\}\}/g) || [];
       allMatches.push(...matches);
     });
-    return [...new Set(allMatches.map(match => match.slice(2, -2)))];
+    
+    const extractedVars = [...new Set(allMatches.map(match => match.slice(2, -2)))];
+    return extractedVars;
   }, [currentTask, promptText, systemPrompt]);
 
   const displayedVariables = React.useMemo(() => {
@@ -217,9 +288,77 @@ const PromptEditor = ({ taskId, versionId }) => {
     return [...new Set([...fromPrompts, ...fromState])];
   }, [extractedVariables, taskVariables]);
 
+  // 실제 자동 저장 실행
+  const handleAutoSave = useCallback(async () => {
+    if (!taskId || !versionId) return;
+    
+    // 변경사항이 있는지 확인
+    const currentContent = {
+      promptText,
+      systemPrompt,
+      taskDescription
+    };
+    
+    const lastSaved = lastSavedContentRef.current;
+    const hasChanges = (
+      currentContent.promptText !== lastSaved.promptText ||
+      currentContent.systemPrompt !== lastSaved.systemPrompt ||
+      currentContent.taskDescription !== lastSaved.taskDescription
+    );
+    
+    if (!hasChanges) {
+      return; // 변경사항이 없으면 저장하지 않음
+    }
+    
+    try {
+      setSaveStatus('saving');
+      await updateVersion(taskId, versionId, {
+        content: promptText,
+        system_prompt: systemPrompt,
+        description: taskDescription,
+      });
+      
+      // 저장 완료 후 마지막 저장된 내용 업데이트
+      lastSavedContentRef.current = currentContent;
+      setSaveStatus('saved');
+    } catch (error) {
+      console.error('자동 저장 실패:', error);
+      setSaveStatus('error');
+      // 5초 후 에러 상태 초기화
+      setTimeout(() => setSaveStatus('saved'), 5000);
+    }
+  }, [taskId, versionId, promptText, systemPrompt, taskDescription, updateVersion]);
+
+  // 자동 저장 함수 (debounced)
+  const scheduleAutoSave = useCallback(() => {
+    if (!taskId || !versionId) return;
+    
+    // 이전 타이머 취소
+    if (autoSaveTimeoutRef.current) {
+      clearTimeout(autoSaveTimeoutRef.current);
+    }
+    
+    // 2초 후 자동 저장 실행
+    autoSaveTimeoutRef.current = setTimeout(() => {
+      handleAutoSave();
+    }, 2000);
+  }, [taskId, versionId, handleAutoSave]);
+
+  // blur 이벤트에서 즉시 저장
+  const handleBlurSave = useCallback(() => {
+    if (autoSaveTimeoutRef.current) {
+      clearTimeout(autoSaveTimeoutRef.current);
+      autoSaveTimeoutRef.current = null;
+    }
+    handleAutoSave();
+  }, [handleAutoSave]);
+
   // Automatically add new variables from prompt to taskVariables
   useEffect(() => {
-    const newVars = extractedVariables.filter(v => v && v !== 'variables' && !taskVariables.hasOwnProperty(v));
+    const newVars = extractedVariables.filter(v => {
+      return v && v.trim() !== '' && v !== 'variables' && !taskVariables.hasOwnProperty(v);
+    });
+    
     if (newVars.length > 0) {
       const updatedVariables = { ...taskVariables };
       newVars.forEach(v => {
@@ -229,17 +368,48 @@ const PromptEditor = ({ taskId, versionId }) => {
     }
   }, [extractedVariables, taskVariables]);
 
+  // 컨텐츠 변경 감지 및 자동 저장 스케줄링
+  useEffect(() => {
+    if (!taskId || !versionId) return;
+    
+    // 초기 로드가 완료된 후에만 자동 저장 스케줄링
+    if (lastSavedContentRef.current.promptText !== undefined) {
+      scheduleAutoSave();
+    }
+  }, [promptText, systemPrompt, taskDescription, scheduleAutoSave]);
+
+  // 컴포넌트 언마운트시 타이머 정리
+  useEffect(() => {
+    return () => {
+      if (autoSaveTimeoutRef.current) {
+        clearTimeout(autoSaveTimeoutRef.current);
+      }
+    };
+  }, []);
+
 
   const handleSave = async () => {
     if (!taskId || !versionId) return;
     try {
+      setSaveStatus('saving');
       await updateVersion(taskId, versionId, {
         content: promptText,
         system_prompt: systemPrompt,
         description: taskDescription,
       });
+      
+      // 저장 완료 후 마지막 저장된 내용 업데이트
+      lastSavedContentRef.current = {
+        promptText,
+        systemPrompt,
+        taskDescription
+      };
+      setSaveStatus('saved');
     } catch (error) {
       console.error('저장 실패:', error);
+      setSaveStatus('error');
+      // 3초 후 에러 상태 초기화
+      setTimeout(() => setSaveStatus('saved'), 3000);
     }
   };
 
@@ -247,13 +417,17 @@ const PromptEditor = ({ taskId, versionId }) => {
   const saveTaskVariables = async (newVariables) => {
     if (!taskId) return;
     try {
+      // 백엔드 API는 variables를 직접 받으므로 중첩하지 않고 바로 보냄
       const response = await fetch(`/api/tasks/${taskId}/variables`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({variables: newVariables})
+        body: JSON.stringify(newVariables)  // variables 키로 감싸지 않고 직접 보냄
       });
+      
       if (response.ok) {
         setTaskVariables(newVariables);
+      } else {
+        console.error('Variables 저장 실패: HTTP', response.status);
       }
     } catch (error) {
       console.error('Variables 저장 실패:', error);
@@ -277,7 +451,12 @@ const PromptEditor = ({ taskId, versionId }) => {
     try {
       const versionName = prompt('새 버전 이름을 입력하세요:');
       if (versionName) {
-        await createVersion(taskId, versionName, promptText, systemPrompt, taskDescription);
+        // 새 버전은 빈 상태에서 시작해야 합니다
+        const emptyContent = '';
+        const defaultSystemPrompt = 'You are a helpful AI Assistant';
+        const emptyDescription = '';
+        
+        await createVersion(taskId, versionName, emptyContent, defaultSystemPrompt, emptyDescription);
       }
     } catch (error) {
       console.error('버전 생성 실패:', error);
@@ -425,12 +604,44 @@ const PromptEditor = ({ taskId, versionId }) => {
               </h2>
             )}
             
-            <div className="px-2 py-1 rounded text-xs font-medium"
-                 style={{ 
-                   background: 'rgba(16, 185, 129, 0.2)', 
-                   color: 'var(--accent-success)' 
-                 }}>
-              Active
+            <div className="flex gap-2">
+              <div className="px-2 py-1 rounded text-xs font-medium"
+                   style={{ 
+                     background: 'rgba(16, 185, 129, 0.2)', 
+                     color: 'var(--accent-success)' 
+                   }}>
+                Active
+              </div>
+              
+              {/* 저장 상태 표시 */}
+              <div className="px-2 py-1 rounded text-xs font-medium flex items-center gap-1"
+                   style={{ 
+                     background: saveStatus === 'saving' ? 'rgba(234, 179, 8, 0.2)' : 
+                                saveStatus === 'error' ? 'rgba(239, 68, 68, 0.2)' : 
+                                'rgba(107, 114, 128, 0.1)',
+                     color: saveStatus === 'saving' ? '#eab308' : 
+                           saveStatus === 'error' ? '#ef4444' : 
+                           'var(--text-muted)'
+                   }}>
+                {saveStatus === 'saving' && (
+                  <>
+                    <span className="animate-spin">⟳</span>
+                    Saving...
+                  </>
+                )}
+                {saveStatus === 'saved' && (
+                  <>
+                    <span>✓</span>
+                    Saved
+                  </>
+                )}
+                {saveStatus === 'error' && (
+                  <>
+                    <span>✗</span>
+                    Error
+                  </>
+                )}
+              </div>
             </div>
           </div>
           
@@ -504,6 +715,7 @@ const PromptEditor = ({ taskId, versionId }) => {
                 <textarea
                   value={taskDescription}
                   onChange={(e) => setTaskDescription(e.target.value)}
+                  onBlur={handleBlurSave}
                   placeholder="Describe the purpose and usage of this prompt..."
                   className="w-full p-3 bg-transparent border rounded text-sm"
                   style={{
@@ -533,6 +745,7 @@ const PromptEditor = ({ taskId, versionId }) => {
                 <textarea
                   value={systemPrompt}
                   onChange={(e) => setSystemPrompt(e.target.value)}
+                  onBlur={handleBlurSave}
                   placeholder="Define AI role and instructions..."
                   className="w-full p-3 bg-transparent border rounded text-sm"
                   style={{
@@ -562,6 +775,7 @@ const PromptEditor = ({ taskId, versionId }) => {
                 <HighlightEditor
                   value={promptText}
                   onChange={setPromptText}
+                  onBlur={handleBlurSave}
                   placeholder="Enter prompt... (Use {{variable_name}} for variables)"
                   className="w-full h-full p-3 text-sm flex-1"
                   style={{
@@ -609,6 +823,48 @@ const PromptEditor = ({ taskId, versionId }) => {
         ) : (
           /* Variables Tab */
           <div className="space-y-4">
+            {/* Debug/Cleanup Controls */}
+            <div className="card">
+              <h3 className="text-sm font-medium mb-3">🔧 Debug Tools</h3>
+              <div className="flex gap-2">
+                <button 
+                  className="btn btn-secondary text-xs"
+                  onClick={async () => {
+                    if (!taskId) return;
+                    try {
+                      const response = await fetch(`/api/tasks/${taskId}/variables/cleanup`, {
+                        method: 'POST'
+                      });
+                      if (response.ok) {
+                        const data = await response.json();
+                        console.log('🔍 [DEBUG] Variables 정리 완료:', data);
+                        // 정리 후 변수 다시 로드
+                        window.location.reload();
+                      }
+                    } catch (error) {
+                      console.error('Variables 정리 실패:', error);
+                    }
+                  }}
+                >
+                  🧹 Clean Variables
+                </button>
+                <button 
+                  className="btn btn-secondary text-xs"
+                  onClick={() => {
+                    console.log('🔍 [DEBUG] 현재 상태:', {
+                      taskId,
+                      versionId,
+                      taskVariables,
+                      extractedVariables,
+                      displayedVariables
+                    });
+                  }}
+                >
+                  🔍 Debug Log
+                </button>
+              </div>
+            </div>
+
             {/* Add Variable */}
             <div className="card">
               <h3 className="text-sm font-medium mb-3">Add Variable</h3>
@@ -727,11 +983,19 @@ const PromptEditor = ({ taskId, versionId }) => {
           👁️ {isPreviewMode ? 'Edit Mode' : 'Preview'}
         </button>
         <button
-          className="btn btn-primary flex-1"
+          className="btn btn-secondary flex-1"
           onClick={handleSave}
-          disabled={!taskId || !versionId}
+          disabled={!taskId || !versionId || saveStatus === 'saving'}
+          title="Force save now (auto-save is enabled)"
         >
-          💾 Save
+          {saveStatus === 'saving' ? (
+            <span className="flex items-center gap-1">
+              <span className="animate-spin">⟳</span>
+              Saving...
+            </span>
+          ) : (
+            <>⚡ Force Save</>
+          )}
         </button>
       </div>
     </div>

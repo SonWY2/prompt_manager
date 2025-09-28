@@ -326,10 +326,74 @@ def update_task_variables(task_id: str, variables: Dict[str, Any]):
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
     
-    task["variables"] = variables
+    # 중첩된 variables 구조 정리 
+    def clean_variables(data):
+        """재귀적으로 중첩된 'variables' 키를 정리"""
+        if isinstance(data, dict):
+            if 'variables' in data and len(data) == 1:
+                # 'variables' 키만 있는 경우, 그 값을 재귀적으로 정리
+                return clean_variables(data['variables'])
+            else:
+                # 일반적인 딕셔너리인 경우, 각 값에 대해 재귀적으로 정리
+                cleaned = {}
+                for k, v in data.items():
+                    if k == 'variables' and isinstance(v, dict):
+                        # 'variables' 키의 값이 딕셔너리인 경우 정리
+                        cleaned_v = clean_variables(v)
+                        # 정리된 결과가 실제 변수들(string 값)인지 확인
+                        if isinstance(cleaned_v, dict) and all(isinstance(val, (str, int, float)) for val in cleaned_v.values()):
+                            cleaned[k] = cleaned_v
+                        elif isinstance(cleaned_v, dict):
+                            # 여전히 중첩된 구조라면 더 정리
+                            cleaned.update(cleaned_v)
+                        else:
+                            cleaned[k] = cleaned_v
+                    else:
+                        cleaned[k] = v
+                return cleaned
+        return data
+    
+    # 새로운 variables를 정리
+    cleaned_variables = clean_variables(variables)
+    
+    task["variables"] = cleaned_variables
     tasks_table.update(task, where('id') == task_id)
     
-    return {"success": True, "variables": variables}
+    return {"success": True, "variables": cleaned_variables}
+
+# Variables 데이터 정리 유틸리티 엔드포인트
+@app.post("/api/tasks/{task_id}/variables/cleanup")
+def cleanup_task_variables(task_id: str):
+    """중첩된 variables 구조를 정리하는 유틸리티"""
+    task = tasks_table.get(where('id') == task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    
+    original_variables = task.get('variables', {})
+    
+    def extract_actual_variables(data, depth=0):
+        """중첩된 구조에서 실제 변수들(string 값)만 추출"""
+        if depth > 10:  # 무한 재귀 방지
+            return {}
+            
+        actual_vars = {}
+        if isinstance(data, dict):
+            for k, v in data.items():
+                if isinstance(v, str):
+                    # 문자열 값이면 실제 변수
+                    actual_vars[k] = v
+                elif isinstance(v, dict):
+                    # 딕셔너리면 재귀적으로 탐색
+                    nested_vars = extract_actual_variables(v, depth + 1)
+                    actual_vars.update(nested_vars)
+        return actual_vars
+    
+    cleaned_variables = extract_actual_variables(original_variables)
+    
+    task["variables"] = cleaned_variables
+    tasks_table.update(task, where('id') == task_id)
+    
+    return {"success": True, "cleaned_variables": cleaned_variables, "original_variables": original_variables}
 
 # 3. Template Variable Management
 @app.get("/api/templates/{task_id}/variables")
