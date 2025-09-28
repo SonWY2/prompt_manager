@@ -704,7 +704,7 @@ const PromptEditor = ({ taskId, versionId }) => {
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-4" style={{ height: 0 }}>
-        {!versionId ? (
+        {!versionId && activeTab === 'prompt' ? (
           <div className="flex items-center justify-center h-full">
             <div className="text-center text-muted">
               <div className="text-2xl mb-2">☝️</div>
