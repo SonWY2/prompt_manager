@@ -36,10 +36,79 @@ app.add_middleware(
 
 # --- Database Initialization ---
 os.makedirs(DATA_DIR, exist_ok=True)
-db = TinyDB(DB_PATH, indent=2, ensure_ascii=False)
-tasks_table = db.table('tasks')
-llm_endpoints_table = db.table('llm_endpoints')
-settings_table = db.table('settings')
+
+def initialize_database():
+    """Initialize database with proper error handling"""
+    try:
+        # Try to read the existing database file
+        if os.path.exists(DB_PATH):
+            # Attempt to validate JSON structure
+            with open(DB_PATH, 'r', encoding='utf-8') as f:
+                content = f.read().strip()
+                if not content:
+                    # File is empty, create default structure
+                    create_default_database()
+                else:
+                    try:
+                        json.loads(content)
+                    except json.JSONDecodeError as e:
+                        # Backup corrupted file and create new one
+                        backup_path = f"{DB_PATH}.backup.{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}"
+                        os.rename(DB_PATH, backup_path)
+                        create_default_database()
+        else:
+            create_default_database()
+            
+        # Initialize TinyDB instance
+        db = TinyDB(DB_PATH, indent=2, ensure_ascii=False)
+        
+        # Ensure all required tables exist
+        tables = {
+            'tasks': db.table('tasks'),
+            'llm_endpoints': db.table('llm_endpoints'), 
+            'settings': db.table('settings')
+        }
+        
+        # Initialize settings if they don't exist
+        if not tables['settings'].get(doc_id=1):
+            tables['settings'].insert({'activeEndpointId': None, 'defaultEndpointId': None})
+            
+        return db, tables
+        
+    except Exception as e:
+        # Critical database initialization error - create fresh database
+        create_default_database()
+        db = TinyDB(DB_PATH, indent=2, ensure_ascii=False)
+        tables = {
+            'tasks': db.table('tasks'),
+            'llm_endpoints': db.table('llm_endpoints'),
+            'settings': db.table('settings')
+        }
+        # Initialize settings
+        tables['settings'].insert({'activeEndpointId': None, 'defaultEndpointId': None})
+        return db, tables
+
+def create_default_database():
+    """Create a new database file with default structure"""
+    default_structure = {
+        "tasks": {},
+        "llm_endpoints": {},
+        "settings": {
+            "1": {
+                "activeEndpointId": None,
+                "defaultEndpointId": None
+            }
+        }
+    }
+    
+    with open(DB_PATH, 'w', encoding='utf-8') as f:
+        json.dump(default_structure, f, indent=2, ensure_ascii=False)
+
+# Initialize database with error handling
+db, db_tables = initialize_database()
+tasks_table = db_tables['tasks']
+llm_endpoints_table = db_tables['llm_endpoints']
+settings_table = db_tables['settings']
 
 
 # --- Pydantic Models ---
@@ -122,13 +191,31 @@ def render_template(template: str, data: dict) -> str:
 
 
 def get_settings():
-    settings = settings_table.get(doc_id=1)
-    if not settings:
-        # If settings don't exist, create them
+    """Get settings with error handling"""
+    try:
+        settings = settings_table.get(doc_id=1)
+        if not settings:
+            # If settings don't exist, create them
+            default_settings = {'activeEndpointId': None, 'defaultEndpointId': None}
+            settings_table.insert(default_settings)
+            return default_settings
+        return settings
+    except Exception as e:
+        # Return default settings if there's an error
         default_settings = {'activeEndpointId': None, 'defaultEndpointId': None}
-        settings_table.insert(default_settings)
+        try:
+            settings_table.insert(default_settings)
+        except Exception as insert_error:
+            pass  # Silently handle insert error
         return default_settings
-    return settings
+
+def safe_db_operation(operation_func, fallback_value=None, operation_name="database operation"):
+    """Safely execute database operations with error handling"""
+    try:
+        return operation_func()
+    except Exception as e:
+        # Silently handle database operation errors
+        return fallback_value
 
 # --- API Endpoints ---
 
@@ -139,12 +226,21 @@ def read_root():
 # 1. Task Management
 @app.get("/api/tasks")
 def get_tasks():
-    tasks_list = tasks_table.all()
-    # Ensure all tasks have the isFavorite field for frontend compatibility
-    for task in tasks_list:
-        if 'isFavorite' not in task:
-            task['isFavorite'] = False
-    return {"tasks": tasks_list}
+    """Get all tasks with error handling"""
+    try:
+        tasks_list = safe_db_operation(
+            lambda: tasks_table.all(),
+            fallback_value=[],
+            operation_name="get tasks"
+        )
+        # Ensure all tasks have the isFavorite field for frontend compatibility
+        for task in tasks_list:
+            if 'isFavorite' not in task:
+                task['isFavorite'] = False
+        return {"tasks": tasks_list}
+    except Exception as e:
+        # Silently handle critical errors
+        return {"tasks": []}
 
 @app.post("/api/tasks", status_code=201)
 def create_task(task: TaskCreate):
@@ -213,7 +309,7 @@ def get_version_detail(task_id: str, version_id: str):
 
 @app.post("/api/tasks/{task_id}/versions", status_code=201)
 def create_version(task_id: str, version: VersionCreate):
-    print(f"Creating version for task {task_id} with data: {version.dict()}")
+    # Creating version for task
     task = tasks_table.get(where('id') == task_id)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
@@ -444,8 +540,7 @@ async def call_llm_endpoint(call: LLMCall):
             model=active_endpoint.get('defaultModel')
         )
     except Exception as e:
-        print(f"LLM API 호출 실패: {e}")
-        # 실패시 더미 응답 반환
+        # LLM API call failed - return error response
         result = {
             "id": "error-response",
             "object": "chat.completion",
@@ -537,9 +632,7 @@ async def call_actual_llm_api(endpoint: dict, system_prompt: str, user_prompt: s
         }
         url = f"{base_url}/chat/completions"
     
-    print(f"🚀 LLM API 호출: {url}")
-    print(f"📝 Model: {model}")
-    print(f"💬 Prompt length: {len(user_prompt)} chars")
+    # Making LLM API call
     
     async with aiohttp.ClientSession() as session:
         try:
@@ -552,11 +645,9 @@ async def call_actual_llm_api(endpoint: dict, system_prompt: str, user_prompt: s
                 
                 if response.status != 200:
                     error_text = await response.text()
-                    print(f"❌ API 오류 응답: {response.status} - {error_text}")
                     raise Exception(f"API returned {response.status}: {error_text}")
                 
                 response_data = await response.json()
-                print(f"✅ LLM API 호출 성공")
                 
                 # Anthropic 응답을 OpenAI 형식으로 변환
                 if 'anthropic.com' in base_url:
@@ -583,20 +674,27 @@ async def call_actual_llm_api(endpoint: dict, system_prompt: str, user_prompt: s
                 return response_data
                 
         except aiohttp.ClientError as e:
-            print(f"❌ 연결 오류: {e}")
             raise Exception(f"Connection error: {str(e)}")
         except Exception as e:
-            print(f"❌ 예상치 못한 오류: {e}")
             raise
 
 # 5. LLM Endpoints Management
 @app.get("/api/llm-endpoints")
 def get_llm_endpoints():
-    endpoints = llm_endpoints_table.all()
-    settings = get_settings()
-    active_id = settings.get('activeEndpointId')
-    default_id = settings.get('defaultEndpointId')
-    return {"endpoints": endpoints, "activeEndpointId": active_id, "defaultEndpointId": default_id}
+    """Get all LLM endpoints with error handling"""
+    try:
+        endpoints = safe_db_operation(
+            lambda: llm_endpoints_table.all(),
+            fallback_value=[],
+            operation_name="get LLM endpoints"
+        )
+        settings = get_settings()
+        active_id = settings.get('activeEndpointId')
+        default_id = settings.get('defaultEndpointId')
+        return {"endpoints": endpoints, "activeEndpointId": active_id, "defaultEndpointId": default_id}
+    except Exception as e:
+        # Silently handle critical errors
+        return {"endpoints": [], "activeEndpointId": None, "defaultEndpointId": None}
 
 
 @app.post("/api/llm-endpoints", status_code=201)
@@ -693,7 +791,6 @@ class TestEndpointChatRequest(BaseModel):
 @app.post("/api/test-endpoint/models")
 async def test_models_endpoint(request: TestEndpointModelsRequest):
     """Test the /v1/models endpoint of an LLM provider"""
-    print("Received request for /api/test-endpoint/models")
     try:
         base_url = request.baseUrl.rstrip('/')
         api_key = request.apiKey
@@ -716,8 +813,6 @@ async def test_models_endpoint(request: TestEndpointModelsRequest):
         
         # Correctly construct the URL
         url = f"{base_url}/models"
-        print(f"{url=}")
-        print(f"{headers=}")
         
         async with aiohttp.ClientSession() as session:
             async with session.get(
@@ -745,7 +840,6 @@ async def test_models_endpoint(request: TestEndpointModelsRequest):
 @app.post("/api/test-endpoint/chat")
 async def test_chat_endpoint(request: TestEndpointChatRequest):
     """Test the /v1/chat/completions endpoint of an LLM provider"""
-    print("Received request for /api/test-endpoint/chat")
     try:
         base_url = request.baseUrl.rstrip('/')
         api_key = request.apiKey
@@ -800,10 +894,6 @@ async def test_chat_endpoint(request: TestEndpointChatRequest):
                 'temperature': 0.7
             }
             url = f"{base_url}/chat/completions"
-            
-        print(f"{base_url=} {api_key=} {model=} {message=}")
-        print(f"{headers=}")
-        print(f"{data=}")
         
         async with aiohttp.ClientSession() as session:
             async with session.post(

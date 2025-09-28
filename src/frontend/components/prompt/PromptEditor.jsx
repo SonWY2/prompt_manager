@@ -73,41 +73,19 @@ const HighlightEditor = ({ value, onChange, onBlur, placeholder, className, styl
     }
   };
 
-  // Force re-sync positions on initial render or value change
-  const forcePositionSync = useCallback(() => {
-    if (overlayContentRef.current && textareaRef.current) {
-      const t = textareaRef.current;
-      const overlay = overlayContentRef.current;
-      
-      overlay.style.transform = `translate(${-t.scrollLeft}px, ${-t.scrollTop}px)`;
-    }
-  }, [value]);
-
   // Keep overlay transform in sync if value changes and textarea has scrolled
   useEffect(() => {
     if (overlayContentRef.current && textareaRef.current) {
       const t = textareaRef.current;
-      overlayContentRef.current.style.transform = `translate(${-t.scrollLeft}px, ${-t.scrollTop}px)`;
+      const overlay = overlayContentRef.current;
+      const overlayContainer = overlay.parentElement;
+      const mainContainer = containerRef.current;
+      
+      overlay.style.transform = `translate(${-t.scrollLeft}px, ${-t.scrollTop}px)`;
+      
+      // Position overlay to match textarea
     }
   }, [value]);
-
-  // Force position sync on mount and resize events
-  useEffect(() => {
-    const resizeObserver = new ResizeObserver(() => {
-      setTimeout(forcePositionSync, 10);
-    });
-
-    if (containerRef.current) {
-      resizeObserver.observe(containerRef.current);
-    }
-
-    // Initial sync
-    setTimeout(forcePositionSync, 10);
-
-    return () => {
-      resizeObserver.disconnect();
-    };
-  }, [forcePositionSync]);
 
   return (
     <div
@@ -132,12 +110,12 @@ const HighlightEditor = ({ value, onChange, onBlur, placeholder, className, styl
           overflow: 'hidden',
           pointerEvents: 'none',
           zIndex: 1,
-          padding: '12px',
+          padding: 0,
           margin: 0,
           border: 'none',
           fontFamily: 'inherit',
-          fontSize: '13px',
-          lineHeight: '1.5',
+          fontSize: 'inherit',
+          lineHeight: 'inherit',
           boxSizing: 'border-box'
         }}
       >
@@ -152,7 +130,7 @@ const HighlightEditor = ({ value, onChange, onBlur, placeholder, className, styl
             fontFamily: 'inherit',
             fontSize: 'inherit',
             lineHeight: 'inherit',
-            padding: 0,
+            padding: '12px',
             margin: 0,
             border: 'none',
             color: 'transparent',
@@ -238,7 +216,7 @@ const PromptEditor = ({ taskId, versionId }) => {
           setTaskVariables(data.variables || {});
         }
       } catch (error) {
-        console.error('Task variables 로드 실패:', error);
+        // Silently handle error
       }
     };
     loadTaskVariables();
@@ -353,7 +331,7 @@ const PromptEditor = ({ taskId, versionId }) => {
       lastSavedContentRef.current = currentContent;
       setSaveStatus('saved');
     } catch (error) {
-      console.error('자동 저장 실패:', error);
+      // Auto-save failed
       setSaveStatus('error');
       // 5초 후 에러 상태 초기화
       setTimeout(() => setSaveStatus('saved'), 5000);
@@ -437,7 +415,7 @@ const PromptEditor = ({ taskId, versionId }) => {
       };
       setSaveStatus('saved');
     } catch (error) {
-      console.error('저장 실패:', error);
+      // Save failed
       setSaveStatus('error');
       // 3초 후 에러 상태 초기화
       setTimeout(() => setSaveStatus('saved'), 3000);
@@ -458,10 +436,10 @@ const PromptEditor = ({ taskId, versionId }) => {
       if (response.ok) {
         setTaskVariables(newVariables);
       } else {
-        console.error('Variables 저장 실패: HTTP', response.status);
+        // Variables save failed
       }
     } catch (error) {
-      console.error('Variables 저장 실패:', error);
+      // Variables save failed
     }
   };
 
@@ -473,18 +451,13 @@ const PromptEditor = ({ taskId, versionId }) => {
       // await updateTask(taskId, { name: taskName.trim() });
       setIsEditingName(false);
     } catch (error) {
-      console.error('이름 저장 실패:', error);
+      // Name save failed
     }
   };
 
   const handleNewVersion = async () => {
     if (!taskId) return;
     try {
-      console.log('🌿 [NEW VERSION] 새 버전 생성 시작:', {
-        태스크ID: taskId,
-        현재버전수: currentTask?.versions?.length || 0
-      });
-      
       const versionName = prompt('새 버전 이름을 입력하세요:');
       if (versionName) {
         // 새 버전은 빈 상태에서 시작해야 합니다
@@ -492,23 +465,10 @@ const PromptEditor = ({ taskId, versionId }) => {
         const defaultSystemPrompt = 'You are a helpful AI Assistant';
         const emptyDescription = '';
         
-        console.log('🌿 [NEW VERSION] 새 버전 생성 실행:', {
-          버전명: versionName,
-          초기내용길이: emptyContent.length,
-          기본시스템프롬프트: defaultSystemPrompt
-        });
-        
         await createVersion(taskId, versionName, emptyContent, defaultSystemPrompt, emptyDescription);
-        
-        console.log('✅ [NEW VERSION] 새 버전 생성 완료:', {
-          버전명: versionName,
-          생성후전체버전수: (currentTask?.versions?.length || 0) + 1
-        });
-      } else {
-        console.log('🚫 [NEW VERSION] 새 버전 생성 취소됨');
       }
     } catch (error) {
-      console.error('❌ [NEW VERSION] 버전 생성 실패:', error);
+      // Version creation failed
     }
   };
 
@@ -517,23 +477,9 @@ const PromptEditor = ({ taskId, versionId }) => {
     const currentVersionData = currentTask?.versions?.find(v => v.id === versionId);
     if (!currentVersionData) return;
 
-    const defaultCopyName = `${currentVersionData.name} (Copy)`;
-    console.log('📋 [COPY VERSION] 복사 시작:', {
-      원본버전ID: versionId,
-      원본버전명: currentVersionData.name,
-      제안된이름: defaultCopyName,
-      전체버전수: currentTask?.versions?.length || 0
-    });
-
-    const newName = prompt(`Enter a name for the copied version:`, defaultCopyName);
+    const newName = prompt(`Enter a name for the copied version:`, `${currentVersionData.name} (Copy)`);
     if (newName) {
       try {
-        console.log('📋 [COPY VERSION] 복사 실행:', {
-          새버전명: newName,
-          복사할내용길이: currentVersionData.content?.length || 0,
-          시스템프롬프트길이: currentVersionData.system_prompt?.length || 0
-        });
-        
         await createVersion(
           taskId,
           newName,
@@ -541,16 +487,9 @@ const PromptEditor = ({ taskId, versionId }) => {
           currentVersionData.system_prompt,
           currentVersionData.description
         );
-        
-        console.log('✅ [COPY VERSION] 복사 완료:', {
-          새버전명: newName,
-          복사후전체버전수: (currentTask?.versions?.length || 0) + 1
-        });
       } catch (error) {
-        console.error('❌ [COPY VERSION] 복사 실패:', error);
+        // Failed to copy version
       }
-    } else {
-      console.log('🚫 [COPY VERSION] 복사 취소됨');
     }
   };
 
@@ -727,57 +666,22 @@ const PromptEditor = ({ taskId, versionId }) => {
 
         {/* Version Timeline */}
         {currentTask.versions && currentTask.versions.length > 0 && (
-          <div 
-            className="version-timeline"
-            onScroll={(e) => {
-              console.log('🔄 [VERSION TIMELINE] 스크롤 위치:', {
-                scrollLeft: e.target.scrollLeft,
-                scrollWidth: e.target.scrollWidth,
-                clientWidth: e.target.clientWidth,
-                isAtStart: e.target.scrollLeft === 0,
-                isAtEnd: e.target.scrollLeft + e.target.clientWidth >= e.target.scrollWidth - 1
-              });
-            }}
-            ref={(el) => {
-              if (el && currentTask.versions.length > 5) {
-                console.log('📊 [VERSION TIMELINE] 많은 버전 감지:', {
-                  버전수: currentTask.versions.length,
-                  컨테이너너비: el.clientWidth,
-                  전체너비: el.scrollWidth,
-                  스크롤가능: el.scrollWidth > el.clientWidth
-                });
-              }
-            }}
-          >
+          <div className="version-timeline">
             <div className="timeline-line"></div>
-            {currentTask.versions.map((version, index) => {
-              const isActive = currentVersion === version.id;
-              const versionName = version.name || `v${index + 1}`;
-              
-              return (
-                <div
-                  key={version.id}
-                  className="timeline-item"
-                  onClick={() => {
-                    console.log('🎯 [VERSION TIMELINE] 버전 클릭:', {
-                      버전ID: version.id,
-                      버전이름: versionName,
-                      인덱스: index,
-                      활성상태: isActive,
-                      전체버전수: currentTask.versions.length
-                    });
-                    setCurrentVersion(version.id);
-                  }}
-                >
-                  <div 
-                    className={`timeline-dot ${isActive ? 'active' : ''}`}
-                  />
-                  <div className={`timeline-label ${isActive ? 'active' : ''}`}>
-                    {versionName}
-                  </div>
+            {currentTask.versions.map((version, index) => (
+              <div
+                key={version.id}
+                className="timeline-item"
+                onClick={() => setCurrentVersion(version.id)}
+              >
+                <div 
+                  className={`timeline-dot ${currentVersion === version.id ? 'active' : ''}`}
+                />
+                <div className={`timeline-label ${currentVersion === version.id ? 'active' : ''}`}>
+                  {version.name || `v${index + 1}`}
                 </div>
-              );
-            })}
+              </div>
+            ))}
           </div>
         )}
 
@@ -928,47 +832,6 @@ const PromptEditor = ({ taskId, versionId }) => {
         ) : (
           /* Variables Tab */
           <div className="space-y-4">
-            {/* Debug/Cleanup Controls */}
-            <div className="card">
-              <h3 className="text-sm font-medium mb-3">🔧 Debug Tools</h3>
-              <div className="flex gap-2">
-                <button 
-                  className="btn btn-secondary text-xs"
-                  onClick={async () => {
-                    if (!taskId) return;
-                    try {
-                      const response = await fetch(`/api/tasks/${taskId}/variables/cleanup`, {
-                        method: 'POST'
-                      });
-                      if (response.ok) {
-                        const data = await response.json();
-                        console.log('🔍 [DEBUG] Variables 정리 완료:', data);
-                        // 정리 후 변수 다시 로드
-                        window.location.reload();
-                      }
-                    } catch (error) {
-                      console.error('Variables 정리 실패:', error);
-                    }
-                  }}
-                >
-                  🧹 Clean Variables
-                </button>
-                <button 
-                  className="btn btn-secondary text-xs"
-                  onClick={() => {
-                    console.log('🔍 [DEBUG] 현재 상태:', {
-                      taskId,
-                      versionId,
-                      taskVariables,
-                      extractedVariables,
-                      displayedVariables
-                    });
-                  }}
-                >
-                  🔍 Debug Log
-                </button>
-              </div>
-            </div>
 
             {/* Add Variable */}
             <div className="card">
@@ -1130,7 +993,6 @@ const addHighlightStyles = () => {
       transition: border-color 0.2s ease;
     }
     
-    
     .highlight-editor:focus,
     .highlight-editor:focus-within {
       border-color: var(--accent-primary);
@@ -1150,7 +1012,9 @@ const addHighlightStyles = () => {
       transform: none !important;
       color: var(--text-primary) !important;
       caret-color: var(--text-primary);
-      /* 명시적 스타일 유지 - inherit 제거 */
+      font: inherit !important;
+      line-height: inherit !important;
+      padding: inherit !important;
     }
 
     .highlight-editor .highlight-input:focus {
@@ -1162,7 +1026,7 @@ const addHighlightStyles = () => {
     }
 
     .highlight-editor .overlay-content .variable-highlight {
-      color: transparent !important;
+      color: var(--accent-primary) !important;
       background: linear-gradient(135deg, rgba(139, 92, 246, 0.3) 0%, rgba(168, 85, 247, 0.3) 100%);
       border: 1px solid rgba(139, 92, 246, 0.4);
       border-radius: 3px;
@@ -1195,7 +1059,13 @@ const addHighlightStyles = () => {
       margin: 0;
       white-space: inherit;
     }
-    /* Overlay variable text color - 중복 제거됨, 위에서 통합 처리 */
+    /* Overlay variable text color */
+    .highlight-editor .overlay-content .variable-highlight {
+      color: transparent !important; /* hide overlay text; show only background */
+      -webkit-box-decoration-break: clone;
+      box-decoration-break: clone;
+      font-weight: 700;
+    }
     
     .highlight-editor:focus .variable-highlight {
       background: linear-gradient(135deg, rgba(139, 92, 246, 0.25) 0%, rgba(168, 85, 247, 0.25) 100%);
@@ -1227,9 +1097,11 @@ const addHighlightStyles = () => {
 
     /* Overlay content sync */
     .highlight-editor .overlay-content {
+      font: inherit;
+      line-height: inherit;
+      padding: inherit;
       white-space: pre-wrap;
       word-break: break-word;
-      /* 스타일은 인라인에서 명시적으로 설정됨 */
     }
 
     /* Remove duplicate styles - already defined above */
