@@ -23,9 +23,9 @@ LLM 프롬프트를 관리하고 시험할 수 있는 웹 애플리케이션입�
 - **Zustand**: 상태 관리 라이브러리
 
 ### 백엔드
-- **Node.js**: 서버 환경
-- **Express**: 웹 프레임워크
-- **JSON 파일 스토리지**: 데이터 저장을 위한 간단한 파일 기반 스토리지 시스템
+- **Python (FastAPI)**: 경량 REST API 서버
+- **Uvicorn**: ASGI 서버 러너
+- **TinyDB (JSON 파일 스토리지)**: 파일 기반 저장소
 
 ## 프로젝트 구조
 
@@ -35,7 +35,7 @@ prompt_manager/
 │   └── prompt-data.json       # 프롬프트 데이터 JSON 파일
 ├── src/
 │   ├── backend/               # 백엔드 코드
-│   │   └── server.js          # Express 서버 
+│   │   └── main.py            # FastAPI 서버
 │   └── frontend/              # 프론트엔드 코드
 │       ├── components/        # React 컴포넌트
 │       │   ├── common/        # 공통 UI 컴포넌트
@@ -52,8 +52,9 @@ prompt_manager/
 ## 설치 및 실행
 
 ### 전제 조건
-- Node.js (v14 이상)
-- npm 또는 yarn
+- Python 3.9+ 및 pip
+- Node.js (v16 이상)
+- npm
 
 ### 설치 단계
 
@@ -66,19 +67,22 @@ prompt_manager/
 2. 의존성 설치
    ```bash
    npm install
+   pip install -r requirements.txt
    ```
 
 3. 개발 서버 실행
    ```bash
    # 프론트엔드와 백엔드 동시 실행
-   npm run dev:all
+   python scripts/run_dev.py
+   # Windows
+   scripts\run_dev.bat
 
-   # 또는 개별적으로 실행
-   npm run dev        # 프론트엔드 개발 서버
-   npm run backend    # 백엔드 서버
+   # 또는 개별 실행
+   npm run dev                         # 프론트엔드 개발 서버(기본 3030)
+   python scripts/run_backend.py       # 백엔드(FastAPI/Uvicorn, 기본 3000)
    ```
 
-4. 웹 브라우저에서 `http://localhost:5173` 접속 (프론트엔드)
+4. 웹 브라우저에서 `http://localhost:3030` 접속 (프론트엔드)
    - 백엔드는 기본적으로 `http://localhost:3000`에서 실행됩니다.
 
 ### 프로덕션 빌드
@@ -90,10 +94,11 @@ prompt_manager/
 
 2. 프로덕션 서버 실행
    ```bash
-   npm start
+   uvicorn src.backend.main:app --host 0.0.0.0 --port 3000
    ```
 
-3. 웹 브라우저에서 `http://localhost:3000` 접속
+3. 백엔드: `http://localhost:3000`
+   - 프론트엔드 정적 파일은 별도 서버에서 dist/를 서빙하거나 리버스 프록시를 구성하세요.
 
 ## 사용 가이드
 

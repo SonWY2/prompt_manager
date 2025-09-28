@@ -1,10 +1,66 @@
 // src/frontend/components/task/TaskNavigator.jsx
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useStore } from '../../store.jsx';
 
 const TaskNavigator = ({ tasks, currentTask, onSelectTask }) => {
   const { createTask, deleteTask, toggleFavorite } = useStore();
   const [activeTab, setActiveTab] = useState('all'); // all, recent, favorites
+  const [containerWidth, setContainerWidth] = useState(null);
+  const tabContainerRef = useRef(null);
+
+  // 컨테이너 너비 모니터링
+  useEffect(() => {
+    const updateWidth = () => {
+      if (tabContainerRef.current) {
+        const width = tabContainerRef.current.offsetWidth;
+        setContainerWidth(width);
+        console.log('[TaskNavigator] Tab container width:', width);
+      }
+    };
+
+    // 초기 너비 설정
+    updateWidth();
+
+    // 리사이즈 이벤트 리스너
+    window.addEventListener('resize', updateWidth);
+    
+    return () => {
+      window.removeEventListener('resize', updateWidth);
+    };
+  }, []);
+
+  // 반응형 탭 텍스트 결정
+  const getTabText = (tabType) => {
+    if (containerWidth === null) return tabType.charAt(0).toUpperCase() + tabType.slice(1);
+    
+    // 매우 작은 화면 (200px 미만)에서는 아이콘/짧은 텍스트 사용
+    if (containerWidth < 200) {
+      switch(tabType) {
+        case 'all': return 'All';
+        case 'recent': return 'New';
+        case 'favorites': return '★';
+        default: return tabType;
+      }
+    }
+    
+    // 작은 화면 (280px 미만)에서는 줄인 텍스트 사용
+    if (containerWidth < 280) {
+      switch(tabType) {
+        case 'all': return 'All';
+        case 'recent': return 'Recent';
+        case 'favorites': return 'Fav';
+        default: return tabType;
+      }
+    }
+    
+    // 기본 텍스트
+    switch(tabType) {
+      case 'all': return 'All';
+      case 'recent': return 'Recent';
+      case 'favorites': return 'Favorites';
+      default: return tabType.charAt(0).toUpperCase() + tabType.slice(1);
+    }
+  };
 
   const handleNewTask = async () => {
     const taskName = prompt("Enter a name for the new task:");
@@ -69,24 +125,27 @@ const TaskNavigator = ({ tasks, currentTask, onSelectTask }) => {
         </div>
 
         {/* Tabs */}
-        <div className="tab-container">
+        <div className="tab-container" ref={tabContainerRef}>
           <button 
             className={`tab ${activeTab === 'all' ? 'active' : ''}`}
             onClick={() => setActiveTab('all')}
+            title="All tasks"
           >
-            All
+            {getTabText('all')}
           </button>
           <button 
             className={`tab ${activeTab === 'recent' ? 'active' : ''}`}
             onClick={() => setActiveTab('recent')}
+            title="Recently modified tasks"
           >
-            Recent
+            {getTabText('recent')}
           </button>
           <button 
             className={`tab ${activeTab === 'favorites' ? 'active' : ''}`}
             onClick={() => setActiveTab('favorites')}
+            title="Favorite tasks"
           >
-            Favorites
+            {getTabText('favorites')}
           </button>
         </div>
       </div>
@@ -101,37 +160,14 @@ const TaskNavigator = ({ tasks, currentTask, onSelectTask }) => {
             return (
               <div
                 key={task.id}
-                className="task-item group flex items-center justify-between"
-                style={{
-                  position: 'relative',
-                  padding: '10px 12px',
-                  marginBottom: '2px',
-                  borderRadius: '3px',
-                  cursor: 'pointer',
-                  transition: 'all 0.15s ease',
-                  background: isActive ? 'var(--accent-primary)' : 'transparent',
-                  color: isActive ? 'white' : 'var(--text-primary)',
-                  border: isActive ? '1px solid var(--accent-primary)' : '1px solid transparent'
-                }}
+                className={`task-item group flex items-center justify-between ${isActive ? 'is-active' : ''}`}
                 onClick={() => onSelectTask(task.id)}
-                onMouseEnter={(e) => {
-                  if (!isActive) {
-                    e.currentTarget.style.background = 'var(--bg-hover)';
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (!isActive) {
-                    e.currentTarget.style.background = 'transparent';
-                  }
-                }}
               >
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1">
                     <span className="text-sm">📄</span>
                     <span
-                      className={`text-sm font-medium truncate ${
-                        isActive ? 'text-white' : 'text-gray-300'
-                      }`}
+                      className="text-sm font-medium truncate"
                     >
                       {task.name}
                     </span>
@@ -141,13 +177,16 @@ const TaskNavigator = ({ tasks, currentTask, onSelectTask }) => {
                   </div>
                 </div>
                 <button 
-                  className="favorite-btn opacity-0 group-hover:opacity-100 transition-opacity"
+                  type="button"
+                  className={`favorite-btn opacity-0 group-hover:opacity-100 transition-opacity ${task.isFavorite ? 'is-fav' : ''}`}
+                  aria-pressed={task.isFavorite}
+                  title={task.isFavorite ? 'Remove from favorites' : 'Add to favorites'}
                   onClick={(e) => {
                     e.stopPropagation(); // Prevent task selection
                     toggleFavorite(task.id);
                   }}
                 >
-                  <span className={task.isFavorite ? 'text-yellow-400' : 'text-gray-500'}>
+                  <span>
                     {task.isFavorite ? '★' : '☆'}
                   </span>
                 </button>

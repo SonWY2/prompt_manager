@@ -662,7 +662,6 @@ export const PromptProvider = ({ children }) => {
       console.error("Cannot initiate new version without a task ID.");
       return;
     }
-    console.log(`Initiating new version for task: ${taskId}`);
     // By setting the version to a special string and forcing edit mode,
     // we can let the PromptEditor know that it should create a new version on save.
     selectVersion('new-version', true);
@@ -682,14 +681,16 @@ export const PromptProvider = ({ children }) => {
   }, []);
   
   const extractVariables = useCallback((content) => {
-    const matches = content.match(/{{(.*?)}}/g) || [];
-    return matches.map(match => match.slice(2, -2).trim());
+    // 더 정확한 변수 추출을 위해 영문자, 숫자, 언더스코어, 하이픈만 허용
+    const matches = content.match(/\{\{([a-zA-Z_][a-zA-Z0-9_-]*)\}\}/g) || [];
+    const variables = matches.map(match => match.slice(2, -2).trim());
+    return variables;
   }, []);
   
   const renderPrompt = useCallback((template, variables) => {
-    return template.replace(/{{(.*?)}}/g, (_, key) => {
+    return template.replace(/\{\{([a-zA-Z_][a-zA-Z0-9_-]*)\}\}/g, (match, key) => {
       const trimmedKey = key.trim();
-      return variables[trimmedKey] !== undefined ? variables[trimmedKey] : `{{${trimmedKey}}}`;
+      return variables[trimmedKey] !== undefined ? variables[trimmedKey] : match;
     });
   }, []);
   
@@ -809,12 +810,6 @@ export const PromptProvider = ({ children }) => {
       setHistoryFilters,
       getFilteredResults,
       
-      // 함수
-      loadTasks,
-      checkServerStatus, // 서버 상태 체크 함수 추가
-      createTask,
-      deleteTask,
-      toggleFavorite,
       // 함수
       loadTasks,
       checkServerStatus, // 서버 상태 체크 함수 추가

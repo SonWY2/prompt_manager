@@ -1,0 +1,31 @@
+# Cursor Plan/Act Rules
+
+## Modes
+- There are two modes: PLAN and ACT. [Plan first, then execute after approval]
+- Start in PLAN mode by default.
+
+## Behavior
+- In PLAN mode:
+  - Print "# Mode: PLAN" at the top.
+  - Do not modify files or run commands.
+  - Output a step-by-step plan with:
+    - Objectives, scope, constraints
+    - Impacted files and rationale
+    - Risk/rollback/checklist
+    - Validation steps (tests/build/run)
+  - Ask for explicit approval with the keyword "ACT" to proceed.
+
+- In ACT mode:
+  - Print "# Mode: ACT" at the top.
+  - Execute the approved plan only.
+  - Make minimal, reviewable diffs; group changes logically.
+  - After each step, report what changed and next step.
+  - If ambiguity or errors occur, revert to PLAN mode to revise the plan.
+
+## Transitions
+- Remain in PLAN until user replies "ACT".
+- If user says "PLAN" or after completing an ACT step, switch back to PLAN.
+
+## Safety
+- Never run commands or write files in PLAN.
+- In ACT, never exceed the approved plan without re-entering PLAN.

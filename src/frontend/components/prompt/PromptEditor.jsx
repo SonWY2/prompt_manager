@@ -2,224 +2,180 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useStore } from '../../store.jsx';
 
-// Highlight Editor Component for syntax highlighting of variables
-const HighlightEditor = ({ value, onChange, placeholder, className, style }) => {
-  const editorRef = useRef(null);
-  const [isComposing, setIsComposing] = useState(false);
+ // Highlight Editor Component (overlay highlighter to avoid cursor jump)
+const HighlightEditor = ({ value, onChange, onBlur, placeholder, className, style }) => {
+  const containerRef = useRef(null);
+  const textareaRef = useRef(null);
+  const overlayContentRef = useRef(null);
 
-  // Function to highlight variables in text
-  const highlightText = (text) => {
-    if (!text) return '';
+  const escapeHtml = (text) => {
+    if (text == null) return '';
+    return String(text)
+      .replace(/&/g, '&')
+      .replace(/</g, '<')
+      .replace(/>/g, '>')
+      .replace(/"/g, '"')
+      .replace(/'/g, '&#39;');
+  };
+
+  const renderHighlightedContent = (text) => {
+    if (!text) return null;
     
-    // Replace {{ }} variables with highlighted spans
-    return text.replace(/\{\{([^}]+)\}\}/g, (match, variable) => {
-      return `<span class="variable-highlight">{{${variable.trim()}}}</span>`;
+    // Split text by variables and render each part
+    const parts = text.split(/(\{\{[^}]+\}\})/g);
+    
+    const renderedElements = parts.map((part, index) => {
+      if (part.match(/\{\{[^}]+\}\}/)) {
+        // This is a variable
+        const variable = part.slice(2, -2).trim();
+        const element = (
+          <span 
+            key={index} 
+            className="variable-highlight"
+          >
+            {`{{${variable}}}`}
+          </span>
+        );
+        return element;
+      } else if (part.length > 0) {
+        // Render ALL text parts (including whitespace) as transparent to maintain layout
+        const element = (
+          <span 
+            key={index} 
+            style={{ 
+              color: 'transparent'
+            }}
+          >
+            {part}
+          </span>
+        );
+        return element;
+      } else {
+        // 빈 문자열도 빈 span으로 렌더링해서 위치를 유지
+        const element = (
+          <span 
+            key={index}
+          >
+            {part}
+          </span>
+        );
+        return element;
+      }
     });
+    
+    return renderedElements;
   };
 
-  // Update editor content when value changes
+  const handleScrollSync = (e) => {
+    const t = e.currentTarget;
+    if (overlayContentRef.current) {
+      overlayContentRef.current.style.transform = `translate(${-t.scrollLeft}px, ${-t.scrollTop}px)`;
+    }
+  };
+
+  // Keep overlay transform in sync if value changes and textarea has scrolled
   useEffect(() => {
-    if (editorRef.current && !isComposing) {
-      const currentHTML = editorRef.current.innerHTML;
-      const expectedHTML = highlightText(value) || '';
+    if (overlayContentRef.current && textareaRef.current) {
+      const t = textareaRef.current;
+      const overlay = overlayContentRef.current;
+      const overlayContainer = overlay.parentElement;
+      const mainContainer = containerRef.current;
       
-      // Only update if HTML content actually needs to change
-      if (currentHTML !== expectedHTML) {
-        const selection = window.getSelection();
-        const range = selection.rangeCount > 0 ? selection.getRangeAt(0) : null;
-        
-        // Store cursor position more accurately
-        let cursorPosition = 0;
-        let shouldRestoreCursor = false;
-        
-        if (range && editorRef.current.contains(range.startContainer)) {
-          shouldRestoreCursor = true;
-          
-          // Calculate cursor position by counting characters
-          const textContent = editorRef.current.textContent || '';
-          const rangeBefore = range.cloneRange();
-          rangeBefore.selectNodeContents(editorRef.current);
-          rangeBefore.setEnd(range.startContainer, range.startOffset);
-          cursorPosition = rangeBefore.toString().length;
-        }
-        
-        // Update innerHTML with highlighted content
-        editorRef.current.innerHTML = expectedHTML;
-        
-        // Restore cursor position if needed
-        if (shouldRestoreCursor) {
-          requestAnimationFrame(() => {
-            try {
-              const textContent = editorRef.current.textContent || '';
-              
-              // Ensure cursor position is within bounds
-              cursorPosition = Math.min(cursorPosition, textContent.length);
-              
-              if (cursorPosition === 0) {
-                // If cursor should be at the beginning
-                const firstTextNode = getFirstTextNode(editorRef.current);
-                if (firstTextNode) {
-                  const newRange = document.createRange();
-                  newRange.setStart(firstTextNode, 0);
-                  newRange.collapse(true);
-                  selection.removeAllRanges();
-                  selection.addRange(newRange);
-                }
-                return;
-              }
-              
-              // Find the correct text node and offset
-              const { node, offset } = findTextNodeAtPosition(editorRef.current, cursorPosition);
-              
-              if (node) {
-                const newRange = document.createRange();
-                newRange.setStart(node, Math.min(offset, node.textContent.length));
-                newRange.collapse(true);
-                
-                selection.removeAllRanges();
-                selection.addRange(newRange);
-              }
-            } catch (e) {
-              console.warn('Cursor restoration failed:', e);
-              // Fallback: place cursor at the end
-              try {
-                const lastTextNode = getLastTextNode(editorRef.current);
-                if (lastTextNode) {
-                  const newRange = document.createRange();
-                  newRange.setStart(lastTextNode, lastTextNode.textContent.length);
-                  newRange.collapse(true);
-                  selection.removeAllRanges();
-                  selection.addRange(newRange);
-                }
-              } catch (fallbackError) {
-                console.warn('Fallback cursor placement failed:', fallbackError);
-              }
-            }
-          });
-        }
-      }
-    }
-  }, [value, isComposing]);
-  
-  // Helper function to find first text node
-  const getFirstTextNode = (element) => {
-    const walker = document.createTreeWalker(
-      element,
-      NodeFilter.SHOW_TEXT,
-      null,
-      false
-    );
-    return walker.nextNode();
-  };
-  
-  // Helper function to find last text node  
-  const getLastTextNode = (element) => {
-    const walker = document.createTreeWalker(
-      element,
-      NodeFilter.SHOW_TEXT,
-      null,
-      false
-    );
-    let lastNode = null;
-    while (walker.nextNode()) {
-      lastNode = walker.currentNode;
-    }
-    return lastNode;
-  };
-  
-  // Helper function to find text node at specific position
-  const findTextNodeAtPosition = (element, position) => {
-    const walker = document.createTreeWalker(
-      element,
-      NodeFilter.SHOW_TEXT,
-      null,
-      false
-    );
-    
-    let currentPosition = 0;
-    
-    while (walker.nextNode()) {
-      const node = walker.currentNode;
-      const nodeLength = node.textContent.length;
+      overlay.style.transform = `translate(${-t.scrollLeft}px, ${-t.scrollTop}px)`;
       
-      if (currentPosition + nodeLength >= position) {
-        return {
-          node: node,
-          offset: position - currentPosition
-        };
-      }
-      
-      currentPosition += nodeLength;
+      // Position overlay to match textarea
     }
-    
-    // If position is beyond content, return last text node
-    const lastNode = getLastTextNode(element);
-    return {
-      node: lastNode,
-      offset: lastNode ? lastNode.textContent.length : 0
-    };
-  };
-
-  const handleInput = (e) => {
-    if (!isComposing && onChange) {
-      const text = e.target.innerText || '';
-      onChange(text);
-    }
-  };
-
-  const handleCompositionStart = () => {
-    setIsComposing(true);
-  };
-
-  const handleCompositionEnd = (e) => {
-    setIsComposing(false);
-    if (onChange) {
-      const text = e.target.innerText || '';
-      onChange(text);
-    }
-  };
-
-  const handlePaste = (e) => {
-    e.preventDefault();
-    const text = e.clipboardData.getData('text/plain');
-    document.execCommand('insertText', false, text);
-  };
-
-  const handleKeyDown = (e) => {
-    // Handle Enter key for consistent line breaks
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      document.execCommand('insertLineBreak');
-      return;
-    }
-    
-    // Handle Tab key (optional: insert spaces instead of losing focus)
-    if (e.key === 'Tab') {
-      e.preventDefault();
-      document.execCommand('insertText', false, '  '); // Insert 2 spaces
-      return;
-    }
-  };
+  }, [value]);
 
   return (
     <div
-      ref={editorRef}
-      contentEditable
+      ref={containerRef}
       className={`highlight-editor ${className || ''}`}
       style={{
-        ...style,
-        whiteSpace: 'pre-wrap',
-        wordWrap: 'break-word',
-        outline: 'none',
+        position: 'relative',
+        // container keeps visual styles via existing CSS + incoming style
+        ...style
       }}
-      onInput={handleInput}
-      onCompositionStart={handleCompositionStart}
-      onCompositionEnd={handleCompositionEnd}
-      onPaste={handlePaste}
-      onKeyDown={handleKeyDown}
-      data-placeholder={placeholder}
-      suppressContentEditableWarning={true}
-    />
+    >
+      {/* Highlight overlay - only shows variable highlighting */}
+      <div
+        aria-hidden="true"
+        className="highlight-overlay"
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          overflow: 'hidden',
+          pointerEvents: 'none',
+          zIndex: 1,
+          padding: 0,
+          margin: 0,
+          border: 'none',
+          fontFamily: 'inherit',
+          fontSize: 'inherit',
+          lineHeight: 'inherit',
+          boxSizing: 'border-box'
+        }}
+      >
+        <div
+          ref={overlayContentRef}
+          className="overlay-content"
+          style={{
+            whiteSpace: 'pre-wrap',
+            wordWrap: 'break-word',
+            overflowWrap: 'break-word',
+            minHeight: '100%',
+            fontFamily: 'inherit',
+            fontSize: 'inherit',
+            lineHeight: 'inherit',
+            padding: '12px',
+            margin: 0,
+            border: 'none',
+            color: 'transparent',
+            boxSizing: 'border-box'
+          }}
+        >
+          {renderHighlightedContent(value)}
+        </div>
+      </div>
+
+      {/* Real input (caret/selection lives here); never rewrite DOM so no cursor jump */}
+      <textarea
+        ref={textareaRef}
+        value={value}
+        onChange={(e) => onChange && onChange(e.target.value)}
+        onBlur={onBlur}
+        onScroll={handleScrollSync}
+        placeholder={placeholder}
+        spellCheck={false}
+        autoCorrect="off"
+        autoCapitalize="off"
+        className="highlight-input"
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          width: '100%',
+          height: '100%',
+          background: 'transparent',
+          color: 'var(--text-primary)',
+          border: 'none',
+          resize: 'none',
+          outline: 'none',
+          fontFamily: 'inherit',
+          fontSize: '13px',
+          lineHeight: '1.5',
+          padding: '12px',
+          margin: 0,
+          boxSizing: 'border-box',
+          zIndex: 2
+        }}
+      />
+    </div>
   );
 };
 
@@ -241,6 +197,11 @@ const PromptEditor = ({ taskId, versionId }) => {
   const [isPreviewMode, setIsPreviewMode] = useState(false);
   const [newVariable, setNewVariable] = useState({ name: '', value: '' });
   const [isEditingName, setIsEditingName] = useState(false);
+  
+  // 자동 저장 관련 상태
+  const [saveStatus, setSaveStatus] = useState('saved'); // 'saving', 'saved', 'error'
+  const autoSaveTimeoutRef = useRef(null);
+  const lastSavedContentRef = useRef({ promptText: '', systemPrompt: '', taskDescription: '' });
 
   const currentTask = taskId ? tasks[taskId] : null;
 
@@ -255,7 +216,7 @@ const PromptEditor = ({ taskId, versionId }) => {
           setTaskVariables(data.variables || {});
         }
       } catch (error) {
-        console.error('Task variables 로드 실패:', error);
+        // Silently handle error
       }
     };
     loadTaskVariables();
@@ -267,35 +228,67 @@ const PromptEditor = ({ taskId, versionId }) => {
     if (currentTask) {
       setTaskName(currentTask.name || '');
     }
+    
     if (currentVersionData) {
-      setPromptText(currentVersionData.content || '');
-      setSystemPrompt(currentVersionData.system_prompt || 'You are a helpfull AI Assistant');
-      setTaskDescription(currentVersionData.description || '');
+      // 기존 버전 데이터 로드
+      const content = currentVersionData.content || '';
+      const system_prompt = currentVersionData.system_prompt || 'You are a helpfull AI Assistant';
+      const description = currentVersionData.description || '';
+      
+      setPromptText(content);
+      setSystemPrompt(system_prompt);
+      setTaskDescription(description);
+      
+      // 초기 로드시 마지막 저장된 내용 설정
+      lastSavedContentRef.current = {
+        promptText: content,
+        systemPrompt: system_prompt,
+        taskDescription: description
+      };
+      setSaveStatus('saved');
     } else {
       // Clear fields if no version is selected or found
+      const defaultSystemPrompt = 'You are a helpfull AI Assistant';
+      
       setPromptText('');
-      setSystemPrompt('You are a helpfull AI Assistant');
+      setSystemPrompt(defaultSystemPrompt);
       setTaskDescription('');
+      
+      // 빈 상태로 초기화
+      lastSavedContentRef.current = {
+        promptText: '',
+        systemPrompt: defaultSystemPrompt,
+        taskDescription: ''
+      };
     }
   }, [versionId, currentTask]); // Depend directly on versionId and currentTask
 
   const extractedVariables = React.useMemo(() => {
     if (!currentTask) return [];
+    
     const allPromptsContent = new Set();
+    
+    // 기존 버전들의 내용 수집
     if (currentTask.versions) {
-      currentTask.versions.forEach(version => {
+      currentTask.versions.forEach((version) => {
         if (version.content) allPromptsContent.add(version.content);
         if (version.system_prompt) allPromptsContent.add(version.system_prompt);
       });
     }
-    allPromptsContent.add(promptText);
-    allPromptsContent.add(systemPrompt);
+    
+    // 현재 편집 중인 내용 추가
+    if (promptText) allPromptsContent.add(promptText);
+    if (systemPrompt) allPromptsContent.add(systemPrompt);
+    
     const allMatches = [];
-    allPromptsContent.forEach(p => {
-      const matches = p.match(/\{\{(\w+)\}\}/g) || [];
+    allPromptsContent.forEach((p) => {
+      // 더 정확한 변수 추출을 위해 영문자, 숫자, 언더스코어, 하이픈만 허용
+      const matches = p.match(/\{\{([a-zA-Z_][a-zA-Z0-9_-]*)\}\}/g) || [];
       allMatches.push(...matches);
     });
-    return [...new Set(allMatches.map(match => match.slice(2, -2)))];
+    
+    const extractedVars = [...new Set(allMatches.map(match => match.slice(2, -2)))];
+    return extractedVars;
   }, [currentTask, promptText, systemPrompt]);
 
   const displayedVariables = React.useMemo(() => {
@@ -304,9 +297,77 @@ const PromptEditor = ({ taskId, versionId }) => {
     return [...new Set([...fromPrompts, ...fromState])];
   }, [extractedVariables, taskVariables]);
 
+  // 실제 자동 저장 실행
+  const handleAutoSave = useCallback(async () => {
+    if (!taskId || !versionId) return;
+    
+    // 변경사항이 있는지 확인
+    const currentContent = {
+      promptText,
+      systemPrompt,
+      taskDescription
+    };
+    
+    const lastSaved = lastSavedContentRef.current;
+    const hasChanges = (
+      currentContent.promptText !== lastSaved.promptText ||
+      currentContent.systemPrompt !== lastSaved.systemPrompt ||
+      currentContent.taskDescription !== lastSaved.taskDescription
+    );
+    
+    if (!hasChanges) {
+      return; // 변경사항이 없으면 저장하지 않음
+    }
+    
+    try {
+      setSaveStatus('saving');
+      await updateVersion(taskId, versionId, {
+        content: promptText,
+        system_prompt: systemPrompt,
+        description: taskDescription,
+      });
+      
+      // 저장 완료 후 마지막 저장된 내용 업데이트
+      lastSavedContentRef.current = currentContent;
+      setSaveStatus('saved');
+    } catch (error) {
+      // Auto-save failed
+      setSaveStatus('error');
+      // 5초 후 에러 상태 초기화
+      setTimeout(() => setSaveStatus('saved'), 5000);
+    }
+  }, [taskId, versionId, promptText, systemPrompt, taskDescription, updateVersion]);
+
+  // 자동 저장 함수 (debounced)
+  const scheduleAutoSave = useCallback(() => {
+    if (!taskId || !versionId) return;
+    
+    // 이전 타이머 취소
+    if (autoSaveTimeoutRef.current) {
+      clearTimeout(autoSaveTimeoutRef.current);
+    }
+    
+    // 2초 후 자동 저장 실행
+    autoSaveTimeoutRef.current = setTimeout(() => {
+      handleAutoSave();
+    }, 2000);
+  }, [taskId, versionId, handleAutoSave]);
+
+  // blur 이벤트에서 즉시 저장
+  const handleBlurSave = useCallback(() => {
+    if (autoSaveTimeoutRef.current) {
+      clearTimeout(autoSaveTimeoutRef.current);
+      autoSaveTimeoutRef.current = null;
+    }
+    handleAutoSave();
+  }, [handleAutoSave]);
+
   // Automatically add new variables from prompt to taskVariables
   useEffect(() => {
-    const newVars = extractedVariables.filter(v => v && v !== 'variables' && !taskVariables.hasOwnProperty(v));
+    const newVars = extractedVariables.filter(v => {
+      return v && v.trim() !== '' && v !== 'variables' && !taskVariables.hasOwnProperty(v);
+    });
+    
     if (newVars.length > 0) {
       const updatedVariables = { ...taskVariables };
       newVars.forEach(v => {
@@ -316,17 +377,48 @@ const PromptEditor = ({ taskId, versionId }) => {
     }
   }, [extractedVariables, taskVariables]);
 
+  // 컨텐츠 변경 감지 및 자동 저장 스케줄링
+  useEffect(() => {
+    if (!taskId || !versionId) return;
+    
+    // 초기 로드가 완료된 후에만 자동 저장 스케줄링
+    if (lastSavedContentRef.current.promptText !== undefined) {
+      scheduleAutoSave();
+    }
+  }, [promptText, systemPrompt, taskDescription, scheduleAutoSave]);
+
+  // 컴포넌트 언마운트시 타이머 정리
+  useEffect(() => {
+    return () => {
+      if (autoSaveTimeoutRef.current) {
+        clearTimeout(autoSaveTimeoutRef.current);
+      }
+    };
+  }, []);
+
 
   const handleSave = async () => {
     if (!taskId || !versionId) return;
     try {
+      setSaveStatus('saving');
       await updateVersion(taskId, versionId, {
         content: promptText,
         system_prompt: systemPrompt,
         description: taskDescription,
       });
+      
+      // 저장 완료 후 마지막 저장된 내용 업데이트
+      lastSavedContentRef.current = {
+        promptText,
+        systemPrompt,
+        taskDescription
+      };
+      setSaveStatus('saved');
     } catch (error) {
-      console.error('저장 실패:', error);
+      // Save failed
+      setSaveStatus('error');
+      // 3초 후 에러 상태 초기화
+      setTimeout(() => setSaveStatus('saved'), 3000);
     }
   };
 
@@ -334,16 +426,20 @@ const PromptEditor = ({ taskId, versionId }) => {
   const saveTaskVariables = async (newVariables) => {
     if (!taskId) return;
     try {
+      // 백엔드 API는 variables를 직접 받으므로 중첩하지 않고 바로 보냄
       const response = await fetch(`/api/tasks/${taskId}/variables`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({variables: newVariables})
+        body: JSON.stringify(newVariables)  // variables 키로 감싸지 않고 직접 보냄
       });
+      
       if (response.ok) {
         setTaskVariables(newVariables);
+      } else {
+        // Variables save failed
       }
     } catch (error) {
-      console.error('Variables 저장 실패:', error);
+      // Variables save failed
     }
   };
 
@@ -355,7 +451,7 @@ const PromptEditor = ({ taskId, versionId }) => {
       // await updateTask(taskId, { name: taskName.trim() });
       setIsEditingName(false);
     } catch (error) {
-      console.error('이름 저장 실패:', error);
+      // Name save failed
     }
   };
 
@@ -364,10 +460,15 @@ const PromptEditor = ({ taskId, versionId }) => {
     try {
       const versionName = prompt('새 버전 이름을 입력하세요:');
       if (versionName) {
-        await createVersion(taskId, versionName, promptText, systemPrompt, taskDescription);
+        // 새 버전은 빈 상태에서 시작해야 합니다
+        const emptyContent = '';
+        const defaultSystemPrompt = 'You are a helpful AI Assistant';
+        const emptyDescription = '';
+        
+        await createVersion(taskId, versionName, emptyContent, defaultSystemPrompt, emptyDescription);
       }
     } catch (error) {
-      console.error('버전 생성 실패:', error);
+      // Version creation failed
     }
   };
 
@@ -387,7 +488,7 @@ const PromptEditor = ({ taskId, versionId }) => {
           currentVersionData.description
         );
       } catch (error) {
-        console.error('Failed to copy version:', error);
+        // Failed to copy version
       }
     }
   };
@@ -512,12 +613,44 @@ const PromptEditor = ({ taskId, versionId }) => {
               </h2>
             )}
             
-            <div className="px-2 py-1 rounded text-xs font-medium"
-                 style={{ 
-                   background: 'rgba(16, 185, 129, 0.2)', 
-                   color: 'var(--accent-success)' 
-                 }}>
-              Active
+            <div className="flex gap-2">
+              <div className="px-2 py-1 rounded text-xs font-medium"
+                   style={{ 
+                     background: 'rgba(16, 185, 129, 0.2)', 
+                     color: 'var(--accent-success)' 
+                   }}>
+                Active
+              </div>
+              
+              {/* 저장 상태 표시 */}
+              <div className="px-2 py-1 rounded text-xs font-medium flex items-center gap-1"
+                   style={{ 
+                     background: saveStatus === 'saving' ? 'rgba(234, 179, 8, 0.2)' : 
+                                saveStatus === 'error' ? 'rgba(239, 68, 68, 0.2)' : 
+                                'rgba(107, 114, 128, 0.1)',
+                     color: saveStatus === 'saving' ? '#eab308' : 
+                           saveStatus === 'error' ? '#ef4444' : 
+                           'var(--text-muted)'
+                   }}>
+                {saveStatus === 'saving' && (
+                  <>
+                    <span className="animate-spin">⟳</span>
+                    Saving...
+                  </>
+                )}
+                {saveStatus === 'saved' && (
+                  <>
+                    <span>✓</span>
+                    Saved
+                  </>
+                )}
+                {saveStatus === 'error' && (
+                  <>
+                    <span>✗</span>
+                    Error
+                  </>
+                )}
+              </div>
             </div>
           </div>
           
@@ -571,7 +704,7 @@ const PromptEditor = ({ taskId, versionId }) => {
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-4" style={{ height: 0 }}>
-        {!versionId ? (
+        {!versionId && activeTab === 'prompt' ? (
           <div className="flex items-center justify-center h-full">
             <div className="text-center text-muted">
               <div className="text-2xl mb-2">☝️</div>
@@ -591,6 +724,7 @@ const PromptEditor = ({ taskId, versionId }) => {
                 <textarea
                   value={taskDescription}
                   onChange={(e) => setTaskDescription(e.target.value)}
+                  onBlur={handleBlurSave}
                   placeholder="Describe the purpose and usage of this prompt..."
                   className="w-full p-3 bg-transparent border rounded text-sm"
                   style={{
@@ -605,7 +739,7 @@ const PromptEditor = ({ taskId, versionId }) => {
             
             {!collapsedSections.description && (
               <div 
-                className="w-full h-2 my-2 cursor-row-resize bg-gray-200 dark:bg-gray-700 hover:bg-blue-400 transition-colors"
+                className="editor-divider my-2 cursor-row-resize"
                 onMouseDown={(e) => onDragStart(e, 'description')}
               />
             )}
@@ -620,6 +754,7 @@ const PromptEditor = ({ taskId, versionId }) => {
                 <textarea
                   value={systemPrompt}
                   onChange={(e) => setSystemPrompt(e.target.value)}
+                  onBlur={handleBlurSave}
                   placeholder="Define AI role and instructions..."
                   className="w-full p-3 bg-transparent border rounded text-sm"
                   style={{
@@ -634,7 +769,7 @@ const PromptEditor = ({ taskId, versionId }) => {
 
             {!collapsedSections.system && (
                <div 
-                className="w-full h-2 my-2 cursor-row-resize bg-gray-200 dark:bg-gray-700 hover:bg-blue-400 transition-colors"
+                className="editor-divider my-2 cursor-row-resize"
                 onMouseDown={(e) => onDragStart(e, 'system')}
               />
             )}
@@ -649,6 +784,7 @@ const PromptEditor = ({ taskId, versionId }) => {
                 <HighlightEditor
                   value={promptText}
                   onChange={setPromptText}
+                  onBlur={handleBlurSave}
                   placeholder="Enter prompt... (Use {{variable_name}} for variables)"
                   className="w-full h-full p-3 text-sm flex-1"
                   style={{
@@ -696,6 +832,7 @@ const PromptEditor = ({ taskId, versionId }) => {
         ) : (
           /* Variables Tab */
           <div className="space-y-4">
+
             {/* Add Variable */}
             <div className="card">
               <h3 className="text-sm font-medium mb-3">Add Variable</h3>
@@ -814,11 +951,19 @@ const PromptEditor = ({ taskId, versionId }) => {
           👁️ {isPreviewMode ? 'Edit Mode' : 'Preview'}
         </button>
         <button
-          className="btn btn-primary flex-1"
+          className="btn btn-secondary flex-1"
           onClick={handleSave}
-          disabled={!taskId || !versionId}
+          disabled={!taskId || !versionId || saveStatus === 'saving'}
+          title="Force save now (auto-save is enabled)"
         >
-          💾 Save
+          {saveStatus === 'saving' ? (
+            <span className="flex items-center gap-1">
+              <span className="animate-spin">⟳</span>
+              Saving...
+            </span>
+          ) : (
+            <>⚡ Force Save</>
+          )}
         </button>
       </div>
     </div>
@@ -848,7 +993,8 @@ const addHighlightStyles = () => {
       transition: border-color 0.2s ease;
     }
     
-    .highlight-editor:focus {
+    .highlight-editor:focus,
+    .highlight-editor:focus-within {
       border-color: var(--accent-primary);
       box-shadow: 0 0 0 1px rgba(139, 92, 246, 0.2);
     }
@@ -857,6 +1003,41 @@ const addHighlightStyles = () => {
       white-space: pre-wrap;
     }
     
+    .highlight-editor .highlight-input {
+      background: transparent !important;
+      border: none !important;
+      box-shadow: none !important;
+      outline: none !important;
+      resize: none !important;
+      transform: none !important;
+      color: var(--text-primary) !important;
+      caret-color: var(--text-primary);
+      font: inherit !important;
+      line-height: inherit !important;
+      padding: inherit !important;
+    }
+
+    .highlight-editor .highlight-input:focus {
+      border: none !important;
+      box-shadow: none !important;
+      outline: none !important;
+      background: transparent !important;
+      transform: none !important;
+    }
+
+    .highlight-editor .overlay-content .variable-highlight {
+      color: var(--accent-primary) !important;
+      background: linear-gradient(135deg, rgba(139, 92, 246, 0.3) 0%, rgba(168, 85, 247, 0.3) 100%);
+      border: 1px solid rgba(139, 92, 246, 0.4);
+      border-radius: 3px;
+      padding: 1px 3px;
+      margin: 0;
+      display: inline;
+      font-weight: 600;
+      box-decoration-break: clone;
+      -webkit-box-decoration-break: clone;
+    }
+
     .highlight-editor:empty:before {
       content: attr(data-placeholder);
       color: var(--text-muted);
@@ -876,7 +1057,14 @@ const addHighlightStyles = () => {
       transition: all 0.2s ease;
       display: inline;
       margin: 0;
-      white-space: nowrap;
+      white-space: inherit;
+    }
+    /* Overlay variable text color */
+    .highlight-editor .overlay-content .variable-highlight {
+      color: transparent !important; /* hide overlay text; show only background */
+      -webkit-box-decoration-break: clone;
+      box-decoration-break: clone;
+      font-weight: 700;
     }
     
     .highlight-editor:focus .variable-highlight {
@@ -906,14 +1094,23 @@ const addHighlightStyles = () => {
     .highlight-editor br {
       line-height: 1.5;
     }
-    
-    .highlight-editor div {
-      display: inline;
+
+    /* Overlay content sync */
+    .highlight-editor .overlay-content {
+      font: inherit;
+      line-height: inherit;
+      padding: inherit;
+      white-space: pre-wrap;
+      word-break: break-word;
     }
-    
+
+    /* Remove duplicate styles - already defined above */
+
+    /* Prevent inline forcing that broke layout */
+    .highlight-editor div,
     .highlight-editor p {
       margin: 0;
-      display: inline;
+      display: block;
     }
   `;
   
