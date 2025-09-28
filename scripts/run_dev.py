@@ -11,16 +11,17 @@ SRC_DIR = ROOT_DIR / "src"
 
 def main():
     """Starts the backend and frontend servers."""
-    # Python backend (FastAPI) listens here
-    api_port = "3000"
+    # Python backend (FastAPI) - SQLite 시스템은 8000 포트 사용
+    api_port = "8000"
     vite_port = "3030"
 
     # --- Setup Environment ---
     env = os.environ.copy()
     env["PYTHONPATH"] = str(SRC_DIR) + os.pathsep + env.get("PYTHONPATH", "")
-    # Vite dev proxy target for /api → backend
+    # Vite dev proxy target for /api → backend (SQLite 시스템)
     env["VITE_API_URL"] = f"http://localhost:{api_port}"
     env["VITE_PORT"] = vite_port
+    env["SERVER_PORT"] = api_port  # 백엔드 스크립트에 포트 전달
 
     # --- Start Backend (Uvicorn via wrapper) ---
     backend_cmd = [

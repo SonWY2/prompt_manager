@@ -185,7 +185,8 @@ const PromptEditor = ({ taskId, versionId }) => {
     createVersion,
     setCurrentVersion,
     currentVersion,
-    updateVersion
+    updateVersion,
+    updateVariables
   } = useStore();
   
   const [promptText, setPromptText] = useState('');
@@ -205,22 +206,27 @@ const PromptEditor = ({ taskId, versionId }) => {
 
   const currentTask = taskId ? tasks[taskId] : null;
 
-  // Task variables 로드
+  // Task variables를 store의 currentTask에서 직접 가져오기
   useEffect(() => {
-    const loadTaskVariables = async () => {
-      if (!taskId) return;
-      try {
-        const response = await fetch(`/api/tasks/${taskId}/variables`);
-        if (response.ok) {
-          const data = await response.json();
-          setTaskVariables(data.variables || {});
-        }
-      } catch (error) {
-        // Silently handle error
-      }
-    };
-    loadTaskVariables();
-  }, [taskId]);
+    console.log(`🔧 [DEBUG] PromptEditor: Task 변수 로드 useEffect 실행`, { 
+      currentTask: !!currentTask, 
+      taskId, 
+      hasVariables: !!(currentTask?.variables) 
+    });
+    
+    if (currentTask) {
+      const variables = currentTask.variables || {};
+      console.log(`🔧 [DEBUG] PromptEditor: store에서 Task 변수 로드 완료`, { 
+        taskId, 
+        variables,
+        variableCount: Object.keys(variables).length 
+      });
+      setTaskVariables(variables);
+    } else {
+      console.log(`🔧 [DEBUG] PromptEditor: currentTask가 없어서 변수 초기화`);
+      setTaskVariables({});
+    }
+  }, [currentTask, taskId]);
 
   useEffect(() => {
     const currentVersionData = currentTask?.versions?.find(v => v.id === versionId);
@@ -362,20 +368,13 @@ const PromptEditor = ({ taskId, versionId }) => {
     handleAutoSave();
   }, [handleAutoSave]);
 
-  // Automatically add new variables from prompt to taskVariables
+  // 🚫 자동 변수 추가 기능 임시 비활성화 (변수 초기화 문제 해결을 위해)
+  // TODO: 나중에 다시 활성화할 때는 로드 타이밍 문제 해결 필요
+  /*
   useEffect(() => {
-    const newVars = extractedVariables.filter(v => {
-      return v && v.trim() !== '' && v !== 'variables' && !taskVariables.hasOwnProperty(v);
-    });
-    
-    if (newVars.length > 0) {
-      const updatedVariables = { ...taskVariables };
-      newVars.forEach(v => {
-        updatedVariables[v] = '';
-      });
-      saveTaskVariables(updatedVariables);
-    }
-  }, [extractedVariables, taskVariables]);
+    // 자동으로 새 변수를 추가하는 로직 (현재 비활성화)
+  }, [extractedVariables, taskVariables, currentTask]);
+  */
 
   // 컨텐츠 변경 감지 및 자동 저장 스케줄링
   useEffect(() => {
@@ -426,20 +425,15 @@ const PromptEditor = ({ taskId, versionId }) => {
   const saveTaskVariables = async (newVariables) => {
     if (!taskId) return;
     try {
-      // 백엔드 API는 variables를 직접 받으므로 중첩하지 않고 바로 보냄
-      const response = await fetch(`/api/tasks/${taskId}/variables`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newVariables)  // variables 키로 감싸지 않고 직접 보냄
-      });
+      console.log('🔧 [DEBUG] PromptEditor에서 변수 저장 시작:', newVariables);
       
-      if (response.ok) {
-        setTaskVariables(newVariables);
-      } else {
-        // Variables save failed
-      }
+      // store의 updateVariables 사용하여 상태 동기화
+      await updateVariables(taskId, newVariables);
+      setTaskVariables(newVariables);
+      
+      console.log('✅ PromptEditor 변수 저장 완료:', newVariables);
     } catch (error) {
-      // Variables save failed
+      console.error('❌ PromptEditor 변수 저장 오류:', error);
     }
   };
 

@@ -128,10 +128,13 @@ export const PromptProvider = ({ children }) => {
       
       const data = await response.json();
       console.log('✅ LLM Endpoints 로드 성공:', data);
+      console.log('🔧 [DEBUG] 받은 endpoints 데이터:', data.endpoints);
       
       setLlmEndpoints(data.endpoints || []);
       setActiveLlmEndpointId(data.activeEndpointId);
       setDefaultLlmEndpointId(data.defaultEndpointId);
+      
+      console.log('🔧 [DEBUG] 상태 업데이트 완료 - endpoints:', data.endpoints?.length || 0, '개');
       
       return data;
     } catch (error) {
@@ -161,9 +164,14 @@ export const PromptProvider = ({ children }) => {
       
       const data = await response.json();
       console.log('✅ LLM Endpoint 추가 성공:', data.endpoint);
+      console.log('🔧 [DEBUG] 추가된 endpoint 데이터:', data.endpoint);
       
       // 상태 업데이트
-      setLlmEndpoints(prev => [...prev, data.endpoint]);
+      setLlmEndpoints(prev => {
+        const updated = [...prev, data.endpoint];
+        console.log('🔧 [DEBUG] 업데이트된 endpoints 상태:', updated);
+        return updated;
+      });
       
       // 첫 번째 엔드포인트라면 자동으로 활성화
       if (data.endpoint.isDefault) {
@@ -195,11 +203,14 @@ export const PromptProvider = ({ children }) => {
       
       const data = await response.json();
       console.log('✅ LLM Endpoint 업데이트 성공:', data.endpoint);
+      console.log('🔧 [DEBUG] 업데이트된 endpoint 데이터:', data.endpoint);
       
       // 상태 업데이트
-      setLlmEndpoints(prev => 
-        prev.map(ep => ep.id === id ? data.endpoint : ep)
-      );
+      setLlmEndpoints(prev => {
+        const updated = prev.map(ep => ep.id === id ? data.endpoint : ep);
+        console.log('🔧 [DEBUG] 업데이트된 endpoints 상태:', updated);
+        return updated;
+      });
       
       return data.endpoint;
     } catch (error) {
@@ -247,7 +258,7 @@ export const PromptProvider = ({ children }) => {
       console.log('🎟️ 활성 LLM Endpoint 설정 시작:', id);
       
       const response = await fetch(apiUrl(`/api/llm-endpoints/${id}/activate`), {
-        method: 'POST'
+        method: 'PUT'
       });
       
       if (!response.ok) {
@@ -272,7 +283,7 @@ export const PromptProvider = ({ children }) => {
       console.log('🏠 기본 LLM Endpoint 설정 시작:', id);
       
       const response = await fetch(apiUrl(`/api/llm-endpoints/${id}/set-default`), {
-        method: 'POST'
+        method: 'PUT'
       });
       
       if (!response.ok) {
@@ -301,14 +312,27 @@ export const PromptProvider = ({ children }) => {
   }, []);
   const loadTasks = useCallback(async () => {
     try {
+      console.log('🔧 [DEBUG] store.jsx: loadTasks 시작');
+      
       const response = await fetch(apiUrl('/api/tasks'));
       const data = await response.json();
+      
+      console.log('🔧 [DEBUG] store.jsx: loadTasks API 응답:', data);
+      
       if (data.tasks) {
         const tasksMap = data.tasks.reduce((acc, task) => {
+          // variables 필드가 없으면 빈 객체로 초기화
+          if (!task.variables) {
+            task.variables = {};
+            console.log(`🔧 [DEBUG] store.jsx: Task ${task.id}에 variables 필드 추가`);
+          }
+          
+          console.log(`🔧 [DEBUG] store.jsx: Task ${task.id} 로드, variables:`, task.variables);
           acc[task.id] = task;
           return acc;
         }, {});
         setTasks(tasksMap);
+        console.log('🔧 [DEBUG] store.jsx: loadTasks 완료, 총', data.tasks.length, '개 Task 로드');
       }
     } catch (error) {
       console.error('Error loading tasks:', error);
@@ -669,14 +693,31 @@ export const PromptProvider = ({ children }) => {
   
   const updateVariables = useCallback(async (taskId, variables) => {
     try {
-      await fetch(apiUrl(`/api/templates/${taskId}/variables`), {
-        method: 'POST',
+      console.log(`🔧 [DEBUG] store.js 변수 업데이트 시작: taskId=${taskId}`, variables);
+      
+      const response = await fetch(apiUrl(`/api/tasks/${taskId}/variables`), {
+        method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ variables })
       });
-      setTemplateVariables(variables);
+      
+      if (response.ok) {
+        // Task 상태의 variables도 업데이트
+        setTasks(prevTasks => ({
+          ...prevTasks,
+          [taskId]: {
+            ...prevTasks[taskId],
+            variables: variables
+          }
+        }));
+        
+        setTemplateVariables(variables);
+        console.log('✅ store.jsx: 변수 업데이트 및 Task 상태 동기화 완료:', variables);
+      } else {
+        console.error('❌ store.jsx: 변수 업데이트 실패:', response.status);
+      }
     } catch (error) {
-      console.error('Error updating variables:', error);
+      console.error('❌ store.jsx: 변수 업데이트 오류:', error);
     }
   }, []);
   
@@ -697,24 +738,34 @@ export const PromptProvider = ({ children }) => {
   // LLM 통합 - 활성화된 엔드포인트 정보 사용
   const callLLM = useCallback(async (taskId, versionId, inputData, systemPromptContent) => {
     try {
+      console.log('🔧 [DEBUG] callLLM 함수 시작:');
+      console.log('  - activeLlmEndpointId:', activeLlmEndpointId);
+      console.log('  - llmEndpoints 배열:', llmEndpoints);
+      console.log('  - llmEndpoints 길이:', llmEndpoints.length);
+      
       // 활성화된 엔드포인트 찾기
       const activeEndpoint = llmEndpoints.find(ep => ep.id === activeLlmEndpointId);
+      console.log('🔧 [DEBUG] 찾은 activeEndpoint:', activeEndpoint);
+      
+      const requestBody = {
+        taskId,
+        versionId,
+        inputData,
+        system_prompt: systemPromptContent,
+        // 활성화된 엔드포인트 정보 전달
+        endpoint: activeEndpoint ? {
+          baseUrl: activeEndpoint.baseUrl,
+          apiKey: activeEndpoint.apiKey,
+          defaultModel: activeEndpoint.defaultModel
+        } : null
+      };
+      
+      console.log('🔧 [DEBUG] 백엔드로 전송할 요청 데이터:', requestBody);
       
       const response = await fetch(apiUrl('/api/llm/call'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          taskId,
-          versionId,
-          inputData,
-          system_prompt: systemPromptContent,
-          // 활성화된 엔드포인트 정보 전달
-          endpoint: activeEndpoint ? {
-            baseUrl: activeEndpoint.baseUrl,
-            apiKey: activeEndpoint.apiKey,
-            defaultModel: activeEndpoint.defaultModel
-          } : null
-        })
+        body: JSON.stringify(requestBody)
       });
       
       if (!response.ok) {
