@@ -92,7 +92,6 @@ class PromptManagerDB:
             conn.execute('CREATE INDEX IF NOT EXISTS idx_results_timestamp ON results (timestamp DESC)')
             
             conn.commit()
-            print("✅ SQLite 데이터베이스 초기화 완료")
     
     def get_connection(self):
         """데이터베이스 연결 반환"""
@@ -343,15 +342,10 @@ class PromptManagerDB:
             cursor = conn.execute('SELECT * FROM llm_endpoints ORDER BY created_at DESC')
             endpoints = []
             for row in cursor.fetchall():
-                raw_endpoint = dict(row)
-                print(f"🔧 [DB DEBUG] 원본 endpoint 데이터: {raw_endpoint}")
-                
+                endpoint = dict(row)
                 # snake_case를 camelCase로 변환 (프론트엔드 호환성)
-                endpoint = self._convert_endpoint_to_frontend_format(raw_endpoint)
-                print(f"🔧 [DB DEBUG] 변환된 endpoint 데이터: {endpoint}")
+                endpoint = self._convert_endpoint_to_frontend_format(endpoint)
                 endpoints.append(endpoint)
-            
-            print(f"✅ [DB DEBUG] 총 {len(endpoints)}개 endpoints 조회 완료")
             return endpoints
     
     def get_llm_endpoint_by_id(self, endpoint_id: str) -> Optional[Dict[str, Any]]:
@@ -368,45 +362,29 @@ class PromptManagerDB:
     def create_llm_endpoint(self, endpoint_data: Dict[str, Any]) -> Dict[str, Any]:
         """새 LLM Endpoint 생성"""
         endpoint_id = endpoint_data.get('id', str(uuid.uuid4()))
-        print(f"🔧 [DB DEBUG] LLM Endpoint 생성 시작 - ID: {endpoint_id}")
-        print(f"🔧 [DB DEBUG] 입력 데이터: {endpoint_data}")
         
-        try:
-            with self.get_connection() as conn:
-                values = (
-                    endpoint_id, 
-                    endpoint_data.get('name'),
-                    endpoint_data.get('baseUrl'),
-                    endpoint_data.get('apiKey'),
-                    endpoint_data.get('defaultModel'),
-                    endpoint_data.get('description'),
-                    endpoint_data.get('contextSize'),
-                    endpoint_data.get('isDefault', False)
-                )
-                print(f"🔧 [DB DEBUG] SQL 실행 값: {values}")
-                
-                conn.execute('''
-                    INSERT INTO llm_endpoints 
-                    (id, name, base_url, api_key, default_model, description, context_size, is_default)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                ''', values)
-                conn.commit()
-                print(f"✅ [DB DEBUG] SQL 실행 및 커밋 완료")
-            
-            result = self.get_llm_endpoint_by_id(endpoint_id)
-            print(f"✅ [DB DEBUG] 생성된 엔드포인트 조회 결과: {result}")
-            return result
-        except Exception as e:
-            print(f"❌ [DB DEBUG] LLM Endpoint 생성 오류: {e}")
-            raise
+        with self.get_connection() as conn:
+            conn.execute('''
+                INSERT INTO llm_endpoints 
+                (id, name, base_url, api_key, default_model, description, context_size, is_default)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (
+                endpoint_id, 
+                endpoint_data.get('name'),
+                endpoint_data.get('baseUrl'),
+                endpoint_data.get('apiKey'),
+                endpoint_data.get('defaultModel'),
+                endpoint_data.get('description'),
+                endpoint_data.get('contextSize'),
+                endpoint_data.get('isDefault', False)
+            ))
+            conn.commit()
+        
+        return self.get_llm_endpoint_by_id(endpoint_id)
     
     def update_llm_endpoint(self, endpoint_id: str, **updates) -> bool:
         """LLM Endpoint 업데이트"""
-        print(f"🔧 [DB DEBUG] LLM Endpoint 업데이트 시작 - ID: {endpoint_id}")
-        print(f"🔧 [DB DEBUG] 업데이트 데이터: {updates}")
-        
         if not updates:
-            print(f"⚠️ [DB DEBUG] 업데이트할 데이터가 없음")
             return False
         
         # 필드명 변환
@@ -418,31 +396,21 @@ class PromptManagerDB:
             'isDefault': 'is_default'
         }
         
-        original_updates = dict(updates)  # 원본 저장
         for old_key, new_key in field_mapping.items():
             if old_key in updates:
                 updates[new_key] = updates.pop(old_key)
         
         updates['updated_at'] = datetime.now().isoformat()
-        print(f"🔧 [DB DEBUG] 필드명 변환 후: {updates}")
         
         # 동적 쿼리 생성
         set_clause = ', '.join([f"{key} = ?" for key in updates.keys()])
         query = f"UPDATE llm_endpoints SET {set_clause} WHERE id = ?"
         values = list(updates.values()) + [endpoint_id]
-        print(f"🔧 [DB DEBUG] SQL 쿼리: {query}")
-        print(f"🔧 [DB DEBUG] SQL 값: {values}")
         
-        try:
-            with self.get_connection() as conn:
-                cursor = conn.execute(query, values)
-                conn.commit()
-                rowcount = cursor.rowcount
-                print(f"✅ [DB DEBUG] 업데이트 완료 - 영향받은 행: {rowcount}")
-                return rowcount > 0
-        except Exception as e:
-            print(f"❌ [DB DEBUG] LLM Endpoint 업데이트 오류: {e}")
-            raise
+        with self.get_connection() as conn:
+            cursor = conn.execute(query, values)
+            conn.commit()
+            return cursor.rowcount > 0
     
     def delete_llm_endpoint(self, endpoint_id: str) -> bool:
         """LLM Endpoint 삭제"""
@@ -477,14 +445,11 @@ class PromptManagerDB:
     def migrate_from_tinydb(self, json_file_path: str) -> bool:
         """TinyDB JSON 파일에서 SQLite로 마이그레이션"""
         try:
-            print(f"🔄 TinyDB 데이터 마이그레이션 시작: {json_file_path}")
-            
             with open(json_file_path, 'r', encoding='utf-8') as f:
                 data = json.load(f)
             
             # Tasks 마이그레이션
             if 'tasks' in data:
-                print(f"📋 Tasks 마이그레이션: {len(data['tasks'])}개")
                 for task_key, task_data in data['tasks'].items():
                     task_id = task_data.get('id', task_key)
                     
@@ -527,13 +492,11 @@ class PromptManagerDB:
             
             # LLM Endpoints 마이그레이션
             if 'llm_endpoints' in data:
-                print(f"🔗 LLM Endpoints 마이그레이션: {len(data['llm_endpoints'])}개")
                 for endpoint_key, endpoint_data in data['llm_endpoints'].items():
                     self.create_llm_endpoint(endpoint_data)
             
             # Settings 마이그레이션
             if 'settings' in data:
-                print(f"⚙️ Settings 마이그레이션: {len(data['settings'])}개")
                 for setting_key, setting_data in data['settings'].items():
                     if isinstance(setting_data, dict):
                         for key, value in setting_data.items():
@@ -541,9 +504,7 @@ class PromptManagerDB:
                     else:
                         self.set_setting(setting_key, str(setting_data))
             
-            print("✅ TinyDB 마이그레이션 완료")
             return True
             
         except Exception as e:
-            print(f"❌ 마이그레이션 실패: {e}")
             return False

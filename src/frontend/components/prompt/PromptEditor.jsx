@@ -208,22 +208,10 @@ const PromptEditor = ({ taskId, versionId }) => {
 
   // Task variables를 store의 currentTask에서 직접 가져오기
   useEffect(() => {
-    console.log(`🔧 [DEBUG] PromptEditor: Task 변수 로드 useEffect 실행`, { 
-      currentTask: !!currentTask, 
-      taskId, 
-      hasVariables: !!(currentTask?.variables) 
-    });
-    
     if (currentTask) {
       const variables = currentTask.variables || {};
-      console.log(`🔧 [DEBUG] PromptEditor: store에서 Task 변수 로드 완료`, { 
-        taskId, 
-        variables,
-        variableCount: Object.keys(variables).length 
-      });
       setTaskVariables(variables);
     } else {
-      console.log(`🔧 [DEBUG] PromptEditor: currentTask가 없어서 변수 초기화`);
       setTaskVariables({});
     }
   }, [currentTask, taskId]);
@@ -425,15 +413,11 @@ const PromptEditor = ({ taskId, versionId }) => {
   const saveTaskVariables = async (newVariables) => {
     if (!taskId) return;
     try {
-      console.log('🔧 [DEBUG] PromptEditor에서 변수 저장 시작:', newVariables);
-      
       // store의 updateVariables 사용하여 상태 동기화
       await updateVariables(taskId, newVariables);
       setTaskVariables(newVariables);
-      
-      console.log('✅ PromptEditor 변수 저장 완료:', newVariables);
     } catch (error) {
-      console.error('❌ PromptEditor 변수 저장 오류:', error);
+      console.error('Error saving variables:', error);
     }
   };
 

@@ -77,63 +77,26 @@ const ResultViewer = ({ taskId, versionId }) => {
   }, [latestResult, versionId]);
 
   const handleRunPrompt = useCallback(async () => {
-    console.log('🔧 [DEBUG] handleRunPrompt 시작 검증:');
-    console.log('  - currentTask:', !!currentTask, currentTask?.id);
-    console.log('  - currentVersion:', !!currentVersion, currentVersion?.id);
-    console.log('  - activeEndpoint:', !!activeEndpoint, activeEndpoint?.id, activeEndpoint?.name);
-    console.log('  - activeLlmEndpointId:', activeLlmEndpointId);
-    
     if (!currentTask || !currentVersion || !activeEndpoint) {
-      console.log('❌ [ERROR] 필수 요소 누락:', {
-        hasTask: !!currentTask,
-        hasVersion: !!currentVersion, 
-        hasActiveEndpoint: !!activeEndpoint
-      });
       setError('Task, version, or LLM endpoint not available');
       return;
     }
     setIsLoading(true);
     setError(null);
     try {
-      console.log('🔧 [DEBUG] Run Prompt 시작 - Current Version:', {
-        id: currentVersion.id,
-        name: currentVersion.name,
-        content: currentVersion.content,
-        system_prompt: currentVersion.system_prompt,
-        variables: currentVersion.variables
-      });
-      
       // Task 레벨과 Version 레벨 변수를 모두 고려
       const taskVariables = currentTask.variables || {};
       const versionVariables = currentVersion.variables || {};
       const variables = { ...taskVariables, ...versionVariables }; // Version 변수가 Task 변수를 오버라이드
       
-      console.log('🔧 [DEBUG] Task 레벨 변수들:', taskVariables);
-      console.log('🔧 [DEBUG] Version 레벨 변수들:', versionVariables);
-      console.log('🔧 [DEBUG] 최종 병합된 변수들:', variables);
-      console.log('🔧 [DEBUG] variables 객체의 키들:', Object.keys(variables));
-      console.log('🔧 [DEBUG] variables 객체의 값들:', Object.values(variables));
-      
       const inputData = {};
       const matches = currentVersion.content?.match(/\{\{(\w+)\}\}/g) || [];
-      console.log('🔧 [DEBUG] 프롬프트에서 추출된 매치:', matches);
-      
       const extractedVars = [...new Set(matches.map(match => match.slice(2, -2)))];
-      console.log('🔧 [DEBUG] 추출된 변수 이름들:', extractedVars);
       
       extractedVars.forEach(variable => {
-        console.log(`🔧 [DEBUG] 변수 '${variable}' 처리:`);
-        console.log(`  - variables에 '${variable}' 키 존재 여부:`, variable in variables);
-        console.log(`  - variables['${variable}'] 값:`, variables[variable]);
-        console.log(`  - typeof variables['${variable}']:`, typeof variables[variable]);
-        
         const value = variables[variable] || `[${variable}]`;
         inputData[variable] = value;
-        console.log(`  - 최종 치환 결과: {{${variable}}} -> "${value}"`);
       });
-      
-      console.log('🔧 [DEBUG] 최종 inputData:', inputData);
-      console.log('🔧 [DEBUG] LLM 호출 시작 - Endpoint:', activeEndpoint);
       
       const result = await callLLM(taskId, versionId, inputData, currentVersion.system_prompt);
       const formattedResult = {
@@ -143,10 +106,9 @@ const ResultViewer = ({ taskId, versionId }) => {
         endpoint: activeEndpoint
       };
       
-      console.log('🔧 [DEBUG] LLM 호출 완료 - 결과:', result);
       setCurrentResult(formattedResult);
     } catch (err) {
-      console.error('❌ [ERROR] Run Prompt 실패:', err);
+      console.error('Run Prompt failed:', err);
       setError(err.message || 'Failed to call LLM API');
     } finally {
       setIsLoading(false);

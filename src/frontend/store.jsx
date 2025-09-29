@@ -102,16 +102,13 @@ export const PromptProvider = ({ children }) => {
       
       if (response.ok) {
         setServerStatus('connected');
-        console.log('서버 상태 체크 성공: connected');
         return true;
       } else {
         setServerStatus('disconnected');
-        console.warn('서버 응답 오류:', response.status);
         return false;
       }
     } catch (error) {
       setServerStatus('disconnected');
-      console.warn('서버 연결 실패:', error.message);
       return false;
     }
   }, []);
@@ -119,7 +116,6 @@ export const PromptProvider = ({ children }) => {
   // LLM Endpoints 관리 함수들
   const loadLlmEndpoints = useCallback(async () => {
     try {
-      console.log('🔄 LLM Endpoints 로드 시작');
       
       const response = await fetch(apiUrl('/api/llm-endpoints'));
       if (!response.ok) {
@@ -127,18 +123,14 @@ export const PromptProvider = ({ children }) => {
       }
       
       const data = await response.json();
-      console.log('✅ LLM Endpoints 로드 성공:', data);
-      console.log('🔧 [DEBUG] 받은 endpoints 데이터:', data.endpoints);
       
       setLlmEndpoints(data.endpoints || []);
       setActiveLlmEndpointId(data.activeEndpointId);
       setDefaultLlmEndpointId(data.defaultEndpointId);
       
-      console.log('🔧 [DEBUG] 상태 업데이트 완료 - endpoints:', data.endpoints?.length || 0, '개');
-      
       return data;
     } catch (error) {
-      console.error('❌ LLM Endpoints 로드 실패:', error);
+      console.error('Error loading LLM endpoints:', error);
       // 서버 연결 실패 시 기본값 설정
       setLlmEndpoints([]);
       setActiveLlmEndpointId(null);
@@ -149,7 +141,6 @@ export const PromptProvider = ({ children }) => {
   
   const addLlmEndpoint = useCallback(async (endpointData) => {
     try {
-      console.log('➕ LLM Endpoint 추가 시작:', endpointData);
       
       const response = await fetch(apiUrl('/api/llm-endpoints'), {
         method: 'POST',
@@ -163,15 +154,9 @@ export const PromptProvider = ({ children }) => {
       }
       
       const data = await response.json();
-      console.log('✅ LLM Endpoint 추가 성공:', data.endpoint);
-      console.log('🔧 [DEBUG] 추가된 endpoint 데이터:', data.endpoint);
       
       // 상태 업데이트
-      setLlmEndpoints(prev => {
-        const updated = [...prev, data.endpoint];
-        console.log('🔧 [DEBUG] 업데이트된 endpoints 상태:', updated);
-        return updated;
-      });
+      setLlmEndpoints(prev => [...prev, data.endpoint]);
       
       // 첫 번째 엔드포인트라면 자동으로 활성화
       if (data.endpoint.isDefault) {
@@ -181,14 +166,13 @@ export const PromptProvider = ({ children }) => {
       
       return data.endpoint;
     } catch (error) {
-      console.error('❌ LLM Endpoint 추가 오류:', error);
+      console.error('Error adding LLM endpoint:', error);
       throw error;
     }
   }, []);
   
   const updateLlmEndpoint = useCallback(async (id, updates) => {
     try {
-      console.log('✏️ LLM Endpoint 업데이트 시작:', { id, updates });
       
       const response = await fetch(apiUrl(`/api/llm-endpoints/${id}`), {
         method: 'PUT',
@@ -202,26 +186,21 @@ export const PromptProvider = ({ children }) => {
       }
       
       const data = await response.json();
-      console.log('✅ LLM Endpoint 업데이트 성공:', data.endpoint);
-      console.log('🔧 [DEBUG] 업데이트된 endpoint 데이터:', data.endpoint);
       
       // 상태 업데이트
-      setLlmEndpoints(prev => {
-        const updated = prev.map(ep => ep.id === id ? data.endpoint : ep);
-        console.log('🔧 [DEBUG] 업데이트된 endpoints 상태:', updated);
-        return updated;
-      });
+      setLlmEndpoints(prev => 
+        prev.map(ep => ep.id === id ? data.endpoint : ep)
+      );
       
       return data.endpoint;
     } catch (error) {
-      console.error('❌ LLM Endpoint 업데이트 오류:', error);
+      console.error('Error updating LLM endpoint:', error);
       throw error;
     }
   }, []);
   
   const deleteLlmEndpoint = useCallback(async (id) => {
     try {
-      console.log('🗑️ LLM Endpoint 삭제 시작:', id);
       
       const response = await fetch(apiUrl(`/api/llm-endpoints/${id}`), {
         method: 'DELETE'
@@ -233,7 +212,6 @@ export const PromptProvider = ({ children }) => {
       }
       
       const data = await response.json();
-      console.log('✅ LLM Endpoint 삭제 성공:', data.message);
       
       // 상태 업데이트
       setLlmEndpoints(prev => prev.filter(ep => ep.id !== id));
@@ -248,14 +226,13 @@ export const PromptProvider = ({ children }) => {
       
       return data;
     } catch (error) {
-      console.error('❌ LLM Endpoint 삭제 오류:', error);
+      console.error('Error deleting LLM endpoint:', error);
       throw error;
     }
   }, [activeLlmEndpointId, defaultLlmEndpointId]);
   
   const setActiveLlmEndpoint = useCallback(async (id) => {
     try {
-      console.log('🎟️ 활성 LLM Endpoint 설정 시작:', id);
       
       const response = await fetch(apiUrl(`/api/llm-endpoints/${id}/activate`), {
         method: 'PUT'
@@ -267,20 +244,18 @@ export const PromptProvider = ({ children }) => {
       }
       
       const data = await response.json();
-      console.log('✅ 활성 LLM Endpoint 설정 성공:', data.activeEndpointId);
       
       setActiveLlmEndpointId(id);
       
       return data;
     } catch (error) {
-      console.error('❌ 활성 LLM Endpoint 설정 오류:', error);
+      console.error('Error setting active LLM endpoint:', error);
       throw error;
     }
   }, []);
   
   const setDefaultLlmEndpoint = useCallback(async (id) => {
     try {
-      console.log('🏠 기본 LLM Endpoint 설정 시작:', id);
       
       const response = await fetch(apiUrl(`/api/llm-endpoints/${id}/set-default`), {
         method: 'PUT'
@@ -292,7 +267,6 @@ export const PromptProvider = ({ children }) => {
       }
       
       const data = await response.json();
-      console.log('✅ 기본 LLM Endpoint 설정 성공:', data.defaultEndpointId);
       
       setDefaultLlmEndpointId(id);
       
@@ -306,7 +280,7 @@ export const PromptProvider = ({ children }) => {
       
       return data;
     } catch (error) {
-      console.error('❌ 기본 LLM Endpoint 설정 오류:', error);
+      console.error('Error setting default LLM endpoint:', error);
       throw error;
     }
   }, []);
@@ -465,7 +439,6 @@ export const PromptProvider = ({ children }) => {
       
       // 응답 상태 확인
       if (!response.ok) {
-        console.warn(`❌ 템플릿 변수 API 오류: ${response.status} ${response.statusText}`);
         setTemplateVariables([]);
         return;
       }
@@ -482,24 +455,20 @@ export const PromptProvider = ({ children }) => {
       try {
         const data = JSON.parse(text);
         setTemplateVariables(data.variables || []);
-        console.log('✅ 템플릿 변수 로드 성공:', taskId, data.variables?.length || 0, '개');
       } catch (parseError) {
-        console.warn('❌ 템플릿 변수 응답의 JSON 파싱 실패:', parseError, '응답 내용:', text);
         setTemplateVariables([]);
       }
       
     } catch (error) {
       // 타임아웃이나 연결 오류 시 서버 상태 업데이트
       if (error.name === 'TimeoutError' || error.code === 'ECONNREFUSED') {
-        console.warn('🔌 서버 연결 실패로 서버 상태를 disconnected로 업데이트');
         setServerStatus('disconnected');
       }
-      console.warn('❌ 서버에서 템플릿 변수를 불러올 수 없습니다. 빈 상태로 설정합니다.', error);
+      console.warn('Unable to load template variables from server:', error);
       setTemplateVariables([]);
     } finally {
       // 로딩 상태 해제 (useRef 사용)
       templateVariableLoadingRef.current.delete(taskId);
-      console.log('🏁 템플릿 변수 로드 완료:', taskId);
     }
   }, [serverStatus]); // 의존성 최소화
   
@@ -693,7 +662,6 @@ export const PromptProvider = ({ children }) => {
   
   const updateVariables = useCallback(async (taskId, variables) => {
     try {
-      console.log(`🔧 [DEBUG] store.js 변수 업데이트 시작: taskId=${taskId}`, variables);
       
       const response = await fetch(apiUrl(`/api/tasks/${taskId}/variables`), {
         method: 'PUT',
@@ -712,12 +680,9 @@ export const PromptProvider = ({ children }) => {
         }));
         
         setTemplateVariables(variables);
-        console.log('✅ store.jsx: 변수 업데이트 및 Task 상태 동기화 완료:', variables);
-      } else {
-        console.error('❌ store.jsx: 변수 업데이트 실패:', response.status);
       }
     } catch (error) {
-      console.error('❌ store.jsx: 변수 업데이트 오류:', error);
+      console.error('Error updating variables:', error);
     }
   }, []);
   
@@ -738,34 +703,24 @@ export const PromptProvider = ({ children }) => {
   // LLM 통합 - 활성화된 엔드포인트 정보 사용
   const callLLM = useCallback(async (taskId, versionId, inputData, systemPromptContent) => {
     try {
-      console.log('🔧 [DEBUG] callLLM 함수 시작:');
-      console.log('  - activeLlmEndpointId:', activeLlmEndpointId);
-      console.log('  - llmEndpoints 배열:', llmEndpoints);
-      console.log('  - llmEndpoints 길이:', llmEndpoints.length);
-      
       // 활성화된 엔드포인트 찾기
       const activeEndpoint = llmEndpoints.find(ep => ep.id === activeLlmEndpointId);
-      console.log('🔧 [DEBUG] 찾은 activeEndpoint:', activeEndpoint);
-      
-      const requestBody = {
-        taskId,
-        versionId,
-        inputData,
-        system_prompt: systemPromptContent,
-        // 활성화된 엔드포인트 정보 전달
-        endpoint: activeEndpoint ? {
-          baseUrl: activeEndpoint.baseUrl,
-          apiKey: activeEndpoint.apiKey,
-          defaultModel: activeEndpoint.defaultModel
-        } : null
-      };
-      
-      console.log('🔧 [DEBUG] 백엔드로 전송할 요청 데이터:', requestBody);
       
       const response = await fetch(apiUrl('/api/llm/call'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(requestBody)
+        body: JSON.stringify({
+          taskId,
+          versionId,
+          inputData,
+          system_prompt: systemPromptContent,
+          // 활성화된 엔드포인트 정보 전달
+          endpoint: activeEndpoint ? {
+            baseUrl: activeEndpoint.baseUrl,
+            apiKey: activeEndpoint.apiKey,
+            defaultModel: activeEndpoint.defaultModel
+          } : null
+        })
       });
       
       if (!response.ok) {
@@ -868,7 +823,6 @@ export const PromptProvider = ({ children }) => {
       deleteTask,
       toggleFavorite,
       setCurrentTask: (taskId) => {
-        console.log('currentTask 설정:', taskId);
         setCurrentTask(taskId);
         // URL 기반 라우팅에서 App.jsx가 URL과 함께 관리하므로 localStorage 저장 제거
       },

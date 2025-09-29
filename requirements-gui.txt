@@ -1,0 +1,36 @@
+# PyQt GUI Requirements for Prompt Manager
+# 
+# This file contains the additional requirements needed to run the PyQt GUI version
+# In addition to the existing requirements.txt
+
+# Core GUI framework
+PyQt6>=6.5.0
+
+# For making HTTP requests to backend
+requests>=2.31.0
+
+# For UUID generation (usually in stdlib but explicit for clarity)
+# uuid - included in Python standard library
+
+# For JSON handling (usually in stdlib but explicit for clarity)  
+# json - included in Python standard library
+
+# For datetime handling (usually in stdlib but explicit for clarity)
+# datetime - included in Python standard library
+
+# For regular expressions (usually in stdlib but explicit for clarity)
+# re - included in Python standard library
+
+# For path handling (usually in stdlib but explicit for clarity)
+# pathlib - included in Python standard library
+
+# For mathematical operations (usually in stdlib but explicit for clarity)
+# math - included in Python standard library
+
+# Optional: For better styling and theming
+# darkdetect>=0.8.0  # Uncomment to auto-detect system dark mode
+
+# Development dependencies (optional)
+# pytest>=7.0.0      # For testing GUI components
+# pytest-qt>=4.0.0   # For testing PyQt applications
+
