@@ -322,6 +322,7 @@ select option {
 .version-timeline {
   display: flex;
   align-items: center;
+  justify-content: flex-start;
   flex-wrap: nowrap;
   gap: 24px;
   margin: 16px 0;

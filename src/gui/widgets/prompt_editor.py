@@ -213,6 +213,7 @@ class VersionTimeline(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 8, 0, 8)
         layout.setSpacing(0)
+        layout.setAlignment(Qt.AlignmentFlag.AlignLeft)  # Force main layout left alignment
         
         # Create scroll area for horizontal scrolling
         self.scroll_area = QScrollArea()
@@ -221,6 +222,7 @@ class VersionTimeline(QWidget):
         self.scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.scroll_area.setMaximumHeight(60)  # Fixed height to prevent vertical expansion
         self.scroll_area.setMinimumHeight(60)
+        self.scroll_area.setAlignment(Qt.AlignmentFlag.AlignLeft)  # Force scroll area left alignment
         
         # Apply modern scroll bar styling
         self.scroll_area.setStyleSheet("""
@@ -270,6 +272,7 @@ class VersionTimeline(QWidget):
         self.timeline_layout = QHBoxLayout(self.timeline_widget)
         self.timeline_layout.setContentsMargins(0, 0, 0, 0)
         self.timeline_layout.setSpacing(4)
+        self.timeline_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)  # Force left alignment
         
         # Set the content widget in the scroll area
         self.scroll_area.setWidget(self.timeline_widget)
@@ -299,10 +302,19 @@ class VersionTimeline(QWidget):
             # Show empty message when no versions
             empty_label = QLabel("No versions available")
             empty_label.setStyleSheet("color: #999; font-style: italic; padding: 8px;")
-            empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            empty_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
             self.timeline_layout.addWidget(empty_label)
+            
+            # Set the timeline widget to minimum size when empty
+            self.timeline_widget.setMinimumWidth(200)
+            self.timeline_widget.setMaximumWidth(200)
             return
             
+        # Calculate total width needed for all buttons and connectors
+        total_width = 0
+        button_count = len(self.versions)
+        connector_count = max(0, button_count - 1)
+        
         # Add version buttons with fixed width to prevent overflow
         for i, version in enumerate(self.versions):
             version_btn = QPushButton(version.get('name', f'v{i+1}'))
@@ -314,6 +326,7 @@ class VersionTimeline(QWidget):
             version_btn.setMinimumWidth(80)
             version_btn.setMaximumWidth(120)
             version_btn.setFixedHeight(28)
+            total_width += 120  # Use max width for calculation
             
             if version['id'] == self.current_version_id:
                 version_btn.setStyleSheet("""
@@ -325,6 +338,7 @@ class VersionTimeline(QWidget):
                         padding: 4px 8px;
                         font-size: 11px;
                         font-weight: bold;
+                        text-align: left;
                     }
                 """)
             else:
@@ -336,6 +350,7 @@ class VersionTimeline(QWidget):
                         border-radius: 6px;
                         padding: 4px 8px;
                         font-size: 11px;
+                        text-align: left;
                     }
                     QPushButton:hover {
                         background-color: #e9ecef;
@@ -357,12 +372,20 @@ class VersionTimeline(QWidget):
                 line.setFixedWidth(8)  # Fixed width for vertical line
                 line.setMaximumHeight(20)
                 self.timeline_layout.addWidget(line)
+                total_width += 8
         
-        # Add stretch to push all items to the left
-        self.timeline_layout.addStretch()
+        # Set timeline widget to exact size needed - this prevents right alignment
+        total_width += 20  # Add some padding
+        self.timeline_widget.setMinimumWidth(total_width)
+        self.timeline_widget.setMaximumWidth(total_width)
         
-        # Update the timeline widget size to accommodate all buttons
+        # Force the layout to be compact and left-aligned
+        self.timeline_layout.setContentsMargins(0, 0, 0, 0)
+        self.timeline_layout.setSpacing(4)
+        
+        # Update the timeline widget size immediately
         self.timeline_widget.updateGeometry()
+        self.timeline_widget.adjustSize()
 
 
 class PromptEditor(QWidget):
