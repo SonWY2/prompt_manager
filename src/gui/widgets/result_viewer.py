@@ -6,7 +6,8 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, 
     QTextEdit, QTabWidget, QScrollArea, QFrame, QListWidget,
     QListWidgetItem, QSplitter, QMessageBox, QProgressBar,
-    QGroupBox, QFormLayout, QTextBrowser, QComboBox
+    QGroupBox, QFormLayout, QTextBrowser, QComboBox, QSlider,
+    QDoubleSpinBox
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QThread, QTimer
 from PyQt6.QtGui import QFont, QPixmap, QIcon
@@ -26,7 +27,8 @@ class LLMCallThread(QThread):
     error = pyqtSignal(str)      # error message
     
     def __init__(self, db_client: DatabaseClient, task_id: str, version_id: str, 
-                 input_data: Dict[str, Any], system_prompt: str, endpoint: Optional[Dict[str, Any]]):
+                 input_data: Dict[str, Any], system_prompt: str, endpoint: Optional[Dict[str, Any]], 
+                 temperature: float = 0.7):
         super().__init__()
         self.db_client = db_client
         self.task_id = task_id
@@ -34,6 +36,7 @@ class LLMCallThread(QThread):
         self.input_data = input_data
         self.system_prompt = system_prompt
         self.endpoint = endpoint
+        self.temperature = temperature
         
     def run(self):
         """Run the LLM call"""
@@ -43,7 +46,8 @@ class LLMCallThread(QThread):
                 self.version_id, 
                 self.input_data, 
                 self.system_prompt,
-                self.endpoint
+                self.endpoint,
+                temperature=self.temperature
             )
             self.finished.emit(result)
         except Exception as e:
@@ -216,39 +220,42 @@ class ResultHistoryItem(QFrame):
         return math.ceil(total_chars / 4)
         
     def _get_model_info(self) -> Optional[str]:
-        """Get model information with improved extraction"""
+        """Get model information with temperature"""
         endpoint = self.result_data.get('endpoint', {})
+        model_name = None
         
         # Try multiple ways to get model information
         if endpoint:
             # Method 1: Check defaultModel field
             if endpoint.get('defaultModel'):
-                return endpoint['defaultModel']
-            
+                model_name = endpoint['defaultModel']
             # Method 2: Check model field (alternative naming)
-            if endpoint.get('model'):
-                return endpoint['model']
-                
+            elif endpoint.get('model'):
+                model_name = endpoint['model']
             # Method 3: Check modelName field
-            if endpoint.get('modelName'):
-                return endpoint['modelName']
-            
+            elif endpoint.get('modelName'):
+                model_name = endpoint['modelName']
             # Method 4: If no model info, show provider name
-            if endpoint.get('name'):
-                return endpoint['name']
-            
+            elif endpoint.get('name'):
+                model_name = endpoint['name']
             # Method 5: Check for nested model info
-            if 'config' in endpoint and endpoint['config'].get('model'):
-                return endpoint['config']['model']
+            elif 'config' in endpoint and endpoint['config'].get('model'):
+                model_name = endpoint['config']['model']
         
         # Method 6: Check output for model info (some APIs include this)
-        output = self.result_data.get('output', {})
-        if isinstance(output, dict):
-            if output.get('model'):
-                return output['model']
-            # For OpenAI-style responses
-            if output.get('usage', {}).get('model'):
-                return output['usage']['model']
+        if not model_name:
+            output = self.result_data.get('output', {})
+            if isinstance(output, dict):
+                if output.get('model'):
+                    model_name = output['model']
+                # For OpenAI-style responses
+                elif output.get('usage', {}).get('model'):
+                    model_name = output['usage']['model']
+        
+        if model_name:
+            # Add temperature to model info
+            temperature = self.result_data.get('temperature', 0.7)
+            return f"{model_name} • T:{temperature:.1f}"
         
         return None
         
@@ -439,6 +446,10 @@ class ResultDetail(QWidget):
         model = endpoint.get('defaultModel') or endpoint.get('name', 'Unknown')
         metrics_layout.addRow("Model:", QLabel(model))
         
+        # Temperature
+        temperature = result_data.get('temperature', 0.7)
+        metrics_layout.addRow("Temperature:", QLabel(f"{temperature:.1f}"))
+        
         # Token calculation
         input_tokens = self._calculate_tokens(request_text)
         output_tokens = self._calculate_tokens(response_content)
@@ -460,7 +471,7 @@ class ResultDetail(QWidget):
             variables_layout = QVBoxLayout(variables_group)
             
             variables_edit = QTextBrowser()
-            variables_edit.setPlainText(json.dumps(input_data, indent=2))
+            variables_edit.setPlainText(json.dumps(input_data, indent=2, ensure_ascii=False))
             variables_edit.setMaximumHeight(150)
             variables_layout.addWidget(variables_edit)
             
@@ -471,7 +482,7 @@ class ResultDetail(QWidget):
         raw_layout = QVBoxLayout(raw_group)
         
         raw_edit = QTextBrowser()
-        raw_edit.setPlainText(json.dumps(result_data.get('output', {}), indent=2))
+        raw_edit.setPlainText(json.dumps(result_data.get('output', {}), indent=2, ensure_ascii=False))
         raw_edit.setMaximumHeight(200)
         raw_layout.addWidget(raw_edit)
         
@@ -689,8 +700,137 @@ class ResultViewer(QWidget):
         
         header_layout.addWidget(self.provider_container)
         
+        # Temperature 설정 영역
+        self.temperature_container = QWidget()
+        self.temperature_container.setFixedHeight(90)
+        self.temperature_container.setStyleSheet("""
+            QWidget {
+                background-color: white;
+                border-bottom: 1px solid #dee2e6;
+            }
+        """)
+
+        temp_layout = QVBoxLayout(self.temperature_container)
+        temp_layout.setContentsMargins(15, 15, 15, 15)
+        temp_layout.setSpacing(8)
+
+        # Temperature 라벨
+        temp_label = QLabel("Temperature")
+        temp_label.setStyleSheet("""
+            QLabel {
+                font-size: 12px;
+                color: #6c757d;
+                font-weight: 500;
+            }
+        """)
+        temp_layout.addWidget(temp_label)
+
+        # Temperature 설정 컨트롤들
+        temp_control_layout = QHBoxLayout()
+        temp_control_layout.setSpacing(10)
+
+        # Temperature 슬라이더
+        self.temperature_slider = QSlider(Qt.Orientation.Horizontal)
+        self.temperature_slider.setRange(0, 20)  # 0.0 ~ 2.0 (x10, 0.1 단위)
+        self.temperature_slider.setValue(7)  # 기본값 0.7
+        self.temperature_slider.setFixedHeight(30)
+        self.temperature_slider.setStyleSheet("""
+            QSlider::groove:horizontal {
+                border: 1px solid #bbb;
+                background: #f0f0f0;
+                height: 6px;
+                border-radius: 3px;
+            }
+            QSlider::sub-page:horizontal {
+                background: #007bff;
+                border: 1px solid #777;
+                height: 6px;
+                border-radius: 3px;
+            }
+            QSlider::handle:horizontal {
+                background: #007bff;
+                border: 1px solid #5c6bc0;
+                width: 18px;
+                height: 18px;
+                margin: -6px 0;
+                border-radius: 9px;
+            }
+            QSlider::handle:horizontal:hover {
+                background: #0056b3;
+            }
+        """)
+
+        # Temperature 값 표시 및 입력
+        self.temperature_spinbox = QDoubleSpinBox()
+        self.temperature_spinbox.setRange(0.0, 2.0)
+        self.temperature_spinbox.setDecimals(1)  # 소수점 1자리로 변경
+        self.temperature_spinbox.setSingleStep(0.1)  # 0.1 단위로 변경
+        self.temperature_spinbox.setValue(0.7)  # 0.7로 변경
+        self.temperature_spinbox.setFixedWidth(70)
+        self.temperature_spinbox.setFixedHeight(30)
+        self.temperature_spinbox.setStyleSheet("""
+            QDoubleSpinBox {
+                border: 1px solid #ced4da;
+                border-radius: 4px;
+                padding: 4px 6px;
+                background-color: white;
+                font-size: 12px;
+                font-weight: 600;
+            }
+            QDoubleSpinBox:hover {
+                border-color: #80bdff;
+            }
+        """)
+
+        temp_control_layout.addWidget(self.temperature_slider, 1)
+        temp_control_layout.addWidget(self.temperature_spinbox)
+
+        temp_layout.addLayout(temp_control_layout)
+
+        # Connect signals for synchronization
+        self.temperature_slider.valueChanged.connect(self.on_temperature_slider_changed)
+        self.temperature_spinbox.valueChanged.connect(self.on_temperature_spinbox_changed)
+        
+        header_layout.addWidget(self.temperature_container)
+        
         layout.addWidget(header_frame)
         
+        # Main tabs - without Variables tab (moved to main sidebar)
+        self.tab_widget = QTabWidget()
+        self.tab_widget.addTab(self.create_response_tab(), "Response")
+        self.tab_widget.addTab(self.create_history_tab(), "History (0)")
+        self.tab_widget.addTab(self.create_comparison_tab(), "Comparison")
+        self.tab_widget.addTab(self.create_metrics_tab(), "Metrics")
+        
+        layout.addWidget(self.tab_widget, 1)
+        
+        # Initial state
+        self.show_no_task_state()
+
+    def on_temperature_slider_changed(self, value: int):
+        """Handle temperature slider change"""
+        # Convert slider value (0-20) to temperature (0.0-2.0) - 0.1 단위
+        temperature = value / 10.0
+        # Update spinbox without triggering its signal
+        self.temperature_spinbox.blockSignals(True)
+        self.temperature_spinbox.setValue(temperature)
+        self.temperature_spinbox.blockSignals(False)
+
+    def on_temperature_spinbox_changed(self, value: float):
+        """Handle temperature spinbox change"""
+        # Convert temperature (0.0-2.0) to slider value (0-20) - 0.1 단위
+        slider_value = int(value * 10)
+        # Update slider without triggering its signal
+        self.temperature_slider.blockSignals(True)
+        self.temperature_slider.setValue(slider_value)
+        self.temperature_slider.blockSignals(False)
+
+    def get_temperature(self) -> float:
+        """Get current temperature value"""
+        return self.temperature_spinbox.value()
+        
+    def finish_setup_ui(self, layout):
+        """Complete the setup_ui method"""
         # Main tabs - without Variables tab (moved to main sidebar)
         self.tab_widget = QTabWidget()
         self.tab_widget.addTab(self.create_response_tab(), "Response")
@@ -1053,6 +1193,9 @@ class ResultViewer(QWidget):
         self.progress_bar.setVisible(True)
         self.status_label.setText("Running...")
         
+        # Get current temperature setting
+        temperature = self.get_temperature()
+        
         # Start LLM call thread
         self.llm_thread = LLMCallThread(
             self.db_client,
@@ -1060,7 +1203,8 @@ class ResultViewer(QWidget):
             self.current_version_id,
             variables,
             system_prompt,
-            self.active_endpoint
+            self.active_endpoint,
+            temperature  # Pass temperature value
         )
         self.llm_thread.finished.connect(self.on_llm_finished)
         self.llm_thread.error.connect(self.on_llm_error)
@@ -1078,7 +1222,8 @@ class ResultViewer(QWidget):
             'inputData': getattr(self.llm_thread, 'input_data', {}),
             'output': result,
             'timestamp': datetime.now().isoformat(),
-            'endpoint': self.active_endpoint
+            'endpoint': self.active_endpoint,
+            'temperature': getattr(self.llm_thread, 'temperature', 0.7)
         }
         
         # Add to results
@@ -1441,7 +1586,8 @@ class ResultViewer(QWidget):
         second_line = QHBoxLayout()
         
         model_name = self.active_endpoint.get('defaultModel', 'Unknown')
-        model_info_label = QLabel(f"Model: {model_name} | Temp: 0.7")
+        current_temp = self.get_temperature()
+        model_info_label = QLabel(f"Model: {model_name} | Temp: {current_temp:.2f}")
         model_info_label.setStyleSheet("font-size: 10px; color: #6c757d;")
         second_line.addWidget(model_info_label)
         second_line.addStretch()

@@ -351,7 +351,8 @@ class DatabaseClient:
             return False
             
     def call_llm(self, task_id: str, version_id: str, input_data: Dict[str, Any],
-                system_prompt: str, endpoint: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
+                system_prompt: str, endpoint: Optional[Dict[str, Any]] = None, 
+                temperature: float = 0.7) -> Optional[Dict[str, Any]]:
         """Call LLM API with the given prompt and variables"""
         try:
             if not endpoint:
@@ -396,7 +397,7 @@ class DatabaseClient:
                         'content': user_prompt
                     }
                 ],
-                'temperature': 0.7
+                'temperature': temperature
             }
             
             response = requests.post(
