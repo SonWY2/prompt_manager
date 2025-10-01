@@ -216,12 +216,40 @@ class ResultHistoryItem(QFrame):
         return math.ceil(total_chars / 4)
         
     def _get_model_info(self) -> Optional[str]:
-        """Get model information"""
+        """Get model information with improved extraction"""
         endpoint = self.result_data.get('endpoint', {})
-        if endpoint and endpoint.get('defaultModel'):
-            return endpoint['defaultModel']
-        elif endpoint and endpoint.get('name'):
-            return endpoint['name']
+        
+        # Try multiple ways to get model information
+        if endpoint:
+            # Method 1: Check defaultModel field
+            if endpoint.get('defaultModel'):
+                return endpoint['defaultModel']
+            
+            # Method 2: Check model field (alternative naming)
+            if endpoint.get('model'):
+                return endpoint['model']
+                
+            # Method 3: Check modelName field
+            if endpoint.get('modelName'):
+                return endpoint['modelName']
+            
+            # Method 4: If no model info, show provider name
+            if endpoint.get('name'):
+                return endpoint['name']
+            
+            # Method 5: Check for nested model info
+            if 'config' in endpoint and endpoint['config'].get('model'):
+                return endpoint['config']['model']
+        
+        # Method 6: Check output for model info (some APIs include this)
+        output = self.result_data.get('output', {})
+        if isinstance(output, dict):
+            if output.get('model'):
+                return output['model']
+            # For OpenAI-style responses
+            if output.get('usage', {}).get('model'):
+                return output['usage']['model']
+        
         return None
         
     def mousePressEvent(self, event):
@@ -243,15 +271,15 @@ class ResultDetail(QWidget):
         layout = QVBoxLayout(self)
         
         # Scroll area for content
-        scroll_area = QScrollArea()
-        scroll_area.setWidgetResizable(True)
-        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.scroll_area = QScrollArea()
+        self.scroll_area.setWidgetResizable(True)
+        self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         
         self.content_widget = QWidget()
         self.content_layout = QVBoxLayout(self.content_widget)
         
-        scroll_area.setWidget(self.content_widget)
-        layout.addWidget(scroll_area)
+        self.scroll_area.setWidget(self.content_widget)
+        layout.addWidget(self.scroll_area)
         
         # Initial empty state
         self.show_empty_state()
@@ -278,9 +306,98 @@ class ResultDetail(QWidget):
         self.content_layout.addWidget(empty_widget)
         
     def show_result(self, result_data: Dict[str, Any], version_data: Optional[Dict[str, Any]] = None):
-        """Show detailed result information"""
-        self.clear_content()
+        """Show detailed result information with guaranteed scroll to top"""
+        print(f"🔄 show_result called - forcing scroll to absolute top")
         
+        # STEP 1: Immediately force scroll to top before any changes
+        self.force_scroll_to_absolute_top()
+        
+        # STEP 2: Completely recreate the scroll widget to avoid accumulation
+        self.recreate_scroll_widget()
+        
+        # STEP 3: Build new content in the fresh widget
+        self.build_result_content(result_data, version_data)
+        
+        # STEP 4: Final scroll to top with multiple guarantees
+        QTimer.singleShot(50, self.force_scroll_to_absolute_top)
+        QTimer.singleShot(150, self.force_scroll_to_absolute_top)
+        QTimer.singleShot(300, self.force_scroll_to_absolute_top)
+        
+        print(f"✅ show_result completed - content should be at top")
+    
+    def recreate_scroll_widget(self):
+        """Completely recreate the scroll widget to avoid content accumulation"""
+        try:
+            print("🔄 Recreating scroll widget from scratch")
+            
+            # Remove old scroll area completely
+            layout = self.layout()
+            if layout:
+                for i in reversed(range(layout.count())):
+                    item = layout.itemAt(i)
+                    if item and item.widget():
+                        widget = item.widget()
+                        widget.setParent(None)
+                        widget.deleteLater()
+            
+            # Create completely new scroll area
+            self.scroll_area = QScrollArea()
+            self.scroll_area.setWidgetResizable(True)
+            self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+            
+            # Create new content widget
+            self.content_widget = QWidget()
+            self.content_layout = QVBoxLayout(self.content_widget)
+            
+            # Set up scroll area
+            self.scroll_area.setWidget(self.content_widget)
+            
+            # Add to main layout
+            layout.addWidget(self.scroll_area)
+            
+            print("✅ Fresh scroll widget created")
+            
+        except Exception as e:
+            print(f"❌ Error recreating scroll widget: {e}")
+    
+    def force_scroll_to_absolute_top(self):
+        """Force scroll to absolute top with maximum certainty"""
+        try:
+            if not hasattr(self, 'scroll_area') or not self.scroll_area:
+                print("⚠️ No scroll area available for scrolling")
+                return
+            
+            # Get vertical scrollbar
+            scrollbar = self.scroll_area.verticalScrollBar()
+            
+            # Method 1: Set value to 0 multiple times
+            scrollbar.setValue(0)
+            scrollbar.setSliderPosition(0)
+            
+            # Method 2: Update geometry first, then scroll
+            if hasattr(self, 'content_widget') and self.content_widget:
+                self.content_widget.updateGeometry()
+                self.content_widget.adjustSize()
+                
+            self.scroll_area.updateGeometry()
+            
+            # Method 3: Force immediate scroll
+            scrollbar.setValue(0)
+            
+            # Method 4: Use ensureVisible for top-left corner
+            self.scroll_area.ensureVisible(0, 0, 0, 0)
+            
+            # Method 5: Final value setting
+            scrollbar.setValue(0)
+            
+            current_value = scrollbar.value()
+            print(f"📍 ABSOLUTE scroll to top - scrollbar value: {current_value}")
+            
+        except Exception as e:
+            print(f"❌ Error in force_scroll_to_absolute_top: {e}")
+    
+    def build_result_content(self, result_data: Dict[str, Any], version_data: Optional[Dict[str, Any]] = None):
+        """Build the result content"""
         # Request section
         request_group = QGroupBox("Request Message")
         request_layout = QVBoxLayout(request_group)
@@ -362,13 +479,57 @@ class ResultDetail(QWidget):
         
         # Add stretch
         self.content_layout.addStretch()
+    
+    def force_scroll_to_top(self):
+        """Force scroll to top with aggressive methods"""
+        try:
+            if hasattr(self, 'scroll_area') and self.scroll_area:
+                scrollbar = self.scroll_area.verticalScrollBar()
+                
+                # Reset scroll position to absolute top
+                scrollbar.setValue(0)
+                scrollbar.setSliderPosition(0)
+                
+                # Force scroll area update
+                self.scroll_area.verticalScrollBar().setValue(0)
+                
+                # Ensure widget is positioned at top
+                if hasattr(self, 'content_widget') and self.content_widget:
+                    self.scroll_area.ensureWidgetVisible(self.content_widget, 0, 0)
+                
+                # Update geometry
+                self.content_widget.updateGeometry()
+                self.scroll_area.updateGeometry()
+                
+                print(f"FORCE scrolled to top - final value: {scrollbar.value()}")
+        except Exception as e:
+            print(f"Error in force_scroll_to_top: {e}")
+        
+    def clear_content_immediately(self):
+        """Clear content immediately without deleteLater"""
+        try:
+            # Hide all widgets first
+            for i in range(self.content_layout.count()):
+                item = self.content_layout.itemAt(i)
+                if item and item.widget():
+                    item.widget().hide()
+            
+            # Remove all widgets immediately
+            while self.content_layout.count():
+                item = self.content_layout.takeAt(0)
+                if item and item.widget():
+                    widget = item.widget()
+                    widget.setParent(None)
+                    widget.deleteLater()
+            
+            print("Content cleared immediately")
+            
+        except Exception as e:
+            print(f"Error clearing content: {e}")
         
     def clear_content(self):
-        """Clear the content"""
-        for i in reversed(range(self.content_layout.count())):
-            child = self.content_layout.itemAt(i)
-            if child and child.widget():
-                child.widget().deleteLater()
+        """Clear the content - fallback method"""
+        self.clear_content_immediately()
                 
     def _render_prompt(self, template: str, variables: Dict[str, Any]) -> str:
         """Render prompt template with variables"""
@@ -748,14 +909,39 @@ class ResultViewer(QWidget):
             self.run_button.setEnabled(False)
             
     def set_task_id(self, task_id: str):
-        """Set the current task"""
+        """Set the current task and completely refresh sidebar"""
+        print(f"ResultViewer: Setting task ID to {task_id}")
+        
+        # Store new task ID
         self.current_task_id = task_id
         self.current_version_id = None
+        
+        # Complete data reset
+        self.task_data = None
+        self.version_data = None
+        self.results = []
+        
+        # Clear all UI components
+        self.clear_all_content()
+        
+        # Load new task data
         self.load_task_data()
         
     def set_version_id(self, version_id: str):
-        """Set the current version"""
+        """Set the current version and refresh results"""
+        print(f"ResultViewer: Setting version ID to {version_id}")
+        
+        # Store new version ID
         self.current_version_id = version_id
+        
+        # Clear version-specific data
+        self.version_data = None
+        self.results = []
+        
+        # Clear result detail area
+        self.result_detail.show_empty_state()
+        
+        # Load new version data
         self.load_version_data()
         
     def load_task_data(self):
@@ -1521,6 +1707,34 @@ class ResultViewer(QWidget):
         task_name = self.task_data.get('name', 'Unknown') if self.task_data else 'Unknown'
         self.status_label.setText(f"Task: {task_name}")
         
+    def clear_all_content(self):
+        """Completely clear all content areas for task/version refresh"""
+        print("ResultViewer: Clearing all content areas")
+        
+        # Clear result detail area
+        self.result_detail.show_empty_state()
+        
+        # Clear history list
+        for i in reversed(range(self.history_list_layout.count())):
+            child = self.history_list_layout.itemAt(i)
+            if child and child.widget():
+                child.widget().deleteLater()
+        
+        # Re-add the stretch item to history list
+        self.history_list_layout.addStretch()
+        
+        # Clear result display area
+        if hasattr(self, 'result_display') and self.result_display.layout():
+            for i in reversed(range(self.result_display.layout().count())):
+                child = self.result_display.layout().itemAt(i)
+                if child and child.widget() and child.widget() not in [self.run_button, self.progress_bar]:
+                    child.widget().deleteLater()
+        
+        # Reset tab titles
+        self.tab_widget.setTabText(1, "History (0)")
+        
+        print("ResultViewer: All content areas cleared")
+
     def clear_content(self):
         """Clear the content area"""
         # Content is now managed by tab widget, no need to clear manually
@@ -1534,7 +1748,7 @@ class ResultViewer(QWidget):
         self.version_data = None
         self.results = []
         
-        
+        self.clear_all_content()
         self.refresh_history()
         self.result_detail.show_empty_state()
         self.show_no_task_state()

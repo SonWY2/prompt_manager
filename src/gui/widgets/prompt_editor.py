@@ -377,12 +377,12 @@ class VariableEditor(QWidget):
                     test_access = edit.isVisible()  # 위젯 접근 테스트
                 except RuntimeError:
                     # 위젯이 이미 삭제된 경우
-                    print("Widget was deleted, skipping height calculation")
+                    # print("Widget was deleted, skipping height calculation")
                     return
                 
                 # 부모 위젯이 존재하는지 확인
                 if not edit.parent():
-                    print("Widget has no parent, skipping height calculation")
+                    # print("Widget has no parent, skipping height calculation")
                     return
                 
                 text = edit.toPlainText()
@@ -418,7 +418,7 @@ class VariableEditor(QWidget):
                 return
             except Exception as e:
                 # 기타 오류 발생 시 기본 높이로 설정 (안전 검사 추가)
-                print(f"Error calculating height: {e}")
+                # print(f"Error calculating height: {e}")
                 try:
                     if edit and hasattr(edit, 'setFixedHeight'):
                         edit.setFixedHeight(50)
@@ -2450,23 +2450,23 @@ class PromptEditor(QWidget):
                         self.selected_versions.remove(first_selected)
                     
                     self.selected_versions.append(version_id)
-                    print(f"➕ Added version to selection: {version_id}")
+                    # print(f"➕ Added version to selection: {version_id}")
                 else:
                     print(f"⚠️ Version already in selection: {version_id}")
             else:
                 # Remove from selected versions
                 if version_id in self.selected_versions:
                     self.selected_versions.remove(version_id)
-                    print(f"➖ Removed version from selection: {version_id}")
+                    # print(f"➖ Removed version from selection: {version_id}")
                 else:
                     print(f"⚠️ Version not in selection: {version_id}")
             
-            print(f"📋 Selected versions after: {self.selected_versions}")
+            # print(f"📋 Selected versions after: {self.selected_versions}")
             
             # Update compare button state
             self.update_compare_button_state()
             
-            print(f"✅ Final selected versions for comparison: {self.selected_versions}")
+            # print(f"✅ Final selected versions for comparison: {self.selected_versions}")
             
         except Exception as e:
             print(f"❌ Error handling version checkbox change: {e}")
