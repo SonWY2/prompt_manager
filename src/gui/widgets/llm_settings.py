@@ -88,14 +88,25 @@ class EndpointListItem(QFrame):
     def setup_ui(self):
         """Setup the endpoint item UI"""
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(12, 8, 12, 8)
+        layout.setContentsMargins(16, 12, 16, 12)
+        layout.setSpacing(6)
         
         # Header with name and badges
         header_layout = QHBoxLayout()
+        header_layout.setSpacing(8)
         
         # Name
         name_label = QLabel(self.endpoint_data.get('name', 'Unnamed Endpoint'))
-        name_label.setFont(QFont("", 11, QFont.Weight.Medium))
+        name_label.setFont(QFont("", 12, QFont.Weight.Medium))
+        name_label.setStyleSheet("""
+            QLabel {
+                border: none;
+                background: transparent;
+                padding: 0px;
+                margin: 0px;
+                color: #212529;
+            }
+        """)
         header_layout.addWidget(name_label)
         
         header_layout.addStretch()
@@ -107,10 +118,11 @@ class EndpointListItem(QFrame):
                 QLabel {
                     background-color: rgba(16, 185, 129, 0.2);
                     color: #10b981;
-                    padding: 2px 6px;
+                    padding: 3px 8px;
                     border-radius: 4px;
-                    font-size: 9px;
+                    font-size: 10px;
                     font-weight: bold;
+                    border: none;
                 }
             """)
             header_layout.addWidget(active_badge)
@@ -121,31 +133,58 @@ class EndpointListItem(QFrame):
                 QLabel {
                     background-color: rgba(139, 92, 246, 0.2);
                     color: #8b5cf6;
-                    padding: 2px 6px;
+                    padding: 3px 8px;
                     border-radius: 4px;
-                    font-size: 9px;
+                    font-size: 10px;
                     font-weight: bold;
+                    border: none;
                 }
             """)
             header_layout.addWidget(default_badge)
             
         layout.addLayout(header_layout)
         
-        # Info
+        # Info section with better spacing
+        info_layout = QVBoxLayout()
+        info_layout.setSpacing(2)
+        info_layout.setContentsMargins(0, 2, 0, 0)
+        
+        # URL
         base_url = self.endpoint_data.get('baseUrl', 'No URL')
-        if len(base_url) > 40:
-            base_url = base_url[:37] + "..."
+        if len(base_url) > 45:
+            base_url = base_url[:42] + "..."
             
         url_label = QLabel(base_url)
-        url_label.setStyleSheet("color: #6c757d; font-size: 10px; font-family: monospace;")
-        layout.addWidget(url_label)
+        url_label.setStyleSheet("""
+            QLabel {
+                color: #6c757d; 
+                font-size: 11px; 
+                font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+                border: none;
+                background: transparent;
+                padding: 0px;
+                margin: 0px;
+            }
+        """)
+        info_layout.addWidget(url_label)
         
         # Model info
         model = self.endpoint_data.get('defaultModel', '')
         if model:
             model_label = QLabel(f"Model: {model}")
-            model_label.setStyleSheet("color: #6c757d; font-size: 10px;")
-            layout.addWidget(model_label)
+            model_label.setStyleSheet("""
+                QLabel {
+                    color: #6c757d; 
+                    font-size: 11px;
+                    border: none;
+                    background: transparent;
+                    padding: 0px;
+                    margin: 0px;
+                }
+            """)
+            info_layout.addWidget(model_label)
+            
+        layout.addLayout(info_layout)
             
     def update_styles(self):
         """Update item styles based on state"""
