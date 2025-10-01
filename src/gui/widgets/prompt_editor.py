@@ -17,6 +17,7 @@ import json
 from datetime import datetime
 
 from ..utils.db_client import DatabaseClient
+from .version_comparison_dialog import VersionComparisonDialog
 
 
 class VariableHighlighter(QSyntaxHighlighter):
@@ -367,6 +368,23 @@ class VariableEditor(QWidget):
         
         def calculate_and_set_height(edit):
             try:
+                # 위젯 유효성 검사
+                if not edit or not hasattr(edit, 'toPlainText'):
+                    return
+                
+                # 위젯이 삭제되었는지 확인
+                try:
+                    test_access = edit.isVisible()  # 위젯 접근 테스트
+                except RuntimeError:
+                    # 위젯이 이미 삭제된 경우
+                    print("Widget was deleted, skipping height calculation")
+                    return
+                
+                # 부모 위젯이 존재하는지 확인
+                if not edit.parent():
+                    print("Widget has no parent, skipping height calculation")
+                    return
+                
                 text = edit.toPlainText()
                 
                 # FontMetrics를 사용한 정확한 높이 계산
@@ -394,10 +412,18 @@ class VariableEditor(QWidget):
                 new_height = min(max(content_height, 50), 80)
                 edit.setFixedHeight(int(new_height))
                 
+            except (RuntimeError, AttributeError) as e:
+                # 위젯이 삭제되었거나 접근할 수 없는 경우
+                print(f"Widget access error (likely deleted): {e}")
+                return
             except Exception as e:
-                # 오류 발생 시 기본 높이로 설정
+                # 기타 오류 발생 시 기본 높이로 설정 (안전 검사 추가)
                 print(f"Error calculating height: {e}")
-                edit.setFixedHeight(50)
+                try:
+                    if edit and hasattr(edit, 'setFixedHeight'):
+                        edit.setFixedHeight(50)
+                except (RuntimeError, AttributeError):
+                    print("Could not set default height - widget deleted")
         
         # 텍스트 변경 시 높이 재조정
         value_edit.textChanged.connect(adjust_text_height)
@@ -748,6 +774,11 @@ class PromptEditor(QWidget):
         self.is_preview_mode = False
         self.text_edits = {}  # QTextEdit 참조 저장
         self.original_contents = {}  # 원본 텍스트 내용 저장
+        
+        # 버전 비교 기능 추가
+        self.selected_versions = []  # 선택된 버전들 (최대 2개)
+        self.version_checkboxes = {}  # 체크박스 참조 저장
+        self.compare_btn = None  # Compare 버튼 참조
         
         self.setup_ui()
         self.setup_connections()
@@ -1320,6 +1351,9 @@ class PromptEditor(QWidget):
     def show_version_selection_state(self):
         """Show version selection state when versions are available"""
         try:
+            # Reset version selection state when entering this screen
+            self.reset_version_selection()
+            
             # Disable updates to prevent flickering
             self.prompt_content_widget.setUpdatesEnabled(False)
             
@@ -1358,6 +1392,53 @@ class PromptEditor(QWidget):
             header_layout.addWidget(message_label)
             
             selection_layout.addWidget(header_widget)
+            
+            # Compare button section
+            compare_section = QWidget()
+            compare_layout = QHBoxLayout(compare_section)
+            compare_layout.setContentsMargins(0, 10, 0, 10)
+            
+            # Info label
+            compare_info_label = QLabel("Select 2 versions to compare:")
+            compare_info_label.setStyleSheet("color: #666; font-size: 12px;")
+            compare_layout.addWidget(compare_info_label)
+            
+            compare_layout.addStretch()
+            
+            # Compare versions button
+            self.compare_btn = QPushButton("⚖️ Compare Versions")
+            self.compare_btn.setEnabled(False)  # Disabled initially
+            self.compare_btn.setStyleSheet("""
+                QPushButton {
+                    background-color: #6c757d;
+                    color: white;
+                    border: none;
+                    padding: 10px 20px;
+                    border-radius: 6px;
+                    font-weight: bold;
+                    font-size: 14px;
+                }
+                QPushButton:hover:enabled {
+                    background-color: #5a6268;
+                }
+                QPushButton:pressed:enabled {
+                    background-color: #545b62;
+                }
+                QPushButton:enabled {
+                    background-color: #007bff;
+                }
+                QPushButton:enabled:hover {
+                    background-color: #0056b3;
+                }
+                QPushButton:disabled {
+                    background-color: #e9ecef;
+                    color: #adb5bd;
+                }
+            """)
+            self.compare_btn.clicked.connect(self.open_version_comparison)
+            compare_layout.addWidget(self.compare_btn)
+            
+            selection_layout.addWidget(compare_section)
             
             # Version list (like variables editor)
             versions_scroll = QScrollArea()
@@ -1401,7 +1482,7 @@ class PromptEditor(QWidget):
                 pass
 
     def create_version_item(self, version: Dict[str, Any]) -> QWidget:
-        """Create a version selection item (like variables editor)"""
+        """Create a version selection item with checkbox for comparison"""
         item_frame = QFrame()
         item_frame.setFrameStyle(QFrame.Shape.Box)
         item_frame.setStyleSheet("""
@@ -1416,23 +1497,41 @@ class PromptEditor(QWidget):
                 border-color: #007bff;
             }
         """)
-        item_frame.setCursor(Qt.CursorShape.PointingHandCursor)
         
         item_layout = QVBoxLayout(item_frame)
         item_layout.setSpacing(8)
         
         # Header with version name and actions
         header_layout = QHBoxLayout()
+        header_layout.setContentsMargins(0, 0, 0, 0)
+        header_layout.setSpacing(8)
         
-        # Version icon and name
-        version_icon = QLabel("📄")
-        version_icon.setFixedSize(20, 20)
-        version_icon.setStyleSheet("font-size: 16px;")
-        header_layout.addWidget(version_icon)
+        # Checkbox for comparison selection
+        version_checkbox = QCheckBox()
+        version_checkbox.setToolTip("Select for comparison")
         
-        # Version name (like variable name)
+        # Fix closure issue by using default parameter to capture version_id
+        version_id = version['id']  # Capture the ID in local variable
+        
+        # Ensure checkbox is properly initialized
+        version_checkbox.setChecked(False)  # Explicitly set to unchecked
+        version_checkbox.setTristate(False)  # Disable tristate
+        
+        # Debug: Log checkbox creation
+        print(f"🏗️ Created checkbox for {version_id}: initial_state={version_checkbox.isChecked()}")
+        
+        # Use toggled signal instead of stateChanged for better reliability
+        version_checkbox.toggled.connect(
+            lambda checked, v_id=version_id: self.on_version_checkbox_changed(v_id, checked)
+        )
+        
+        # Store checkbox reference
+        self.version_checkboxes[version_id] = version_checkbox
+        header_layout.addWidget(version_checkbox)
+        
+        # Version name with icon (combined to avoid extra widgets)
         version_name = version.get('name', 'Untitled Version')
-        name_label = QLabel(version_name)
+        name_label = QLabel(f"📄 {version_name}")
         name_label.setStyleSheet("""
             QLabel {
                 background-color: rgba(0, 123, 255, 0.2);
@@ -1698,10 +1797,11 @@ class PromptEditor(QWidget):
     def _ensure_widget_layout(self, widget):
         """Ensure widget has a layout, create if needed"""
         try:
-            if not widget.layout():
+            if widget.layout() is None:  # More precise check for None
                 content_layout = QVBoxLayout()
                 content_layout.setContentsMargins(0, 0, 0, 0)
                 widget.setLayout(content_layout)
+            # If layout already exists, don't try to set it again
         except Exception as e:
             print(f"Error in _ensure_widget_layout: {e}")
     
@@ -2325,6 +2425,168 @@ class PromptEditor(QWidget):
         
         self.show_empty_state()
         
+    def on_version_checkbox_changed(self, version_id: str, is_checked: bool):
+        """Handle version checkbox state change for comparison"""
+        try:
+            print(f"🔄 Checkbox changed: version_id={version_id}, is_checked={is_checked}")
+            print(f"📋 Current selected_versions before: {self.selected_versions}")
+            
+            if is_checked:
+                # Add to selected versions if not already there and limit to 2
+                if version_id not in self.selected_versions:
+                    if len(self.selected_versions) >= 2:
+                        # Uncheck the first selected version and remove it
+                        first_selected = self.selected_versions[0]
+                        print(f"🔄 Unchecking first selected: {first_selected}")
+                        if first_selected in self.version_checkboxes:
+                            self.version_checkboxes[first_selected].setChecked(False)
+                        self.selected_versions.remove(first_selected)
+                    
+                    self.selected_versions.append(version_id)
+                    print(f"➕ Added version to selection: {version_id}")
+                else:
+                    print(f"⚠️ Version already in selection: {version_id}")
+            else:
+                # Remove from selected versions
+                if version_id in self.selected_versions:
+                    self.selected_versions.remove(version_id)
+                    print(f"➖ Removed version from selection: {version_id}")
+                else:
+                    print(f"⚠️ Version not in selection: {version_id}")
+            
+            print(f"📋 Selected versions after: {self.selected_versions}")
+            
+            # Update compare button state
+            self.update_compare_button_state()
+            
+            print(f"✅ Final selected versions for comparison: {self.selected_versions}")
+            
+        except Exception as e:
+            print(f"❌ Error handling version checkbox change: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    def update_compare_button_state(self):
+        """Update the state of the compare button based on selected versions"""
+        try:
+            if self.compare_btn:
+                # Enable button only when exactly 2 versions are selected
+                can_compare = len(self.selected_versions) == 2
+                self.compare_btn.setEnabled(can_compare)
+                
+                # Update button text and style based on selection count
+                if len(self.selected_versions) == 0:
+                    self.compare_btn.setText("⚖️ Compare Versions")
+                    self.compare_btn.setStyleSheet("""
+                        QPushButton {
+                            background-color: #e9ecef;
+                            color: #adb5bd;
+                            border: none;
+                            padding: 10px 20px;
+                            border-radius: 6px;
+                            font-weight: bold;
+                            font-size: 14px;
+                        }
+                    """)
+                elif len(self.selected_versions) == 1:
+                    self.compare_btn.setText("⚖️ Compare Versions (1/2)")
+                    self.compare_btn.setStyleSheet("""
+                        QPushButton {
+                            background-color: #e9ecef;
+                            color: #adb5bd;
+                            border: none;
+                            padding: 10px 20px;
+                            border-radius: 6px;
+                            font-weight: bold;
+                            font-size: 14px;
+                        }
+                    """)
+                else:  # exactly 2 selected
+                    self.compare_btn.setText("⚖️ Compare Versions (2/2)")
+                    self.compare_btn.setStyleSheet("""
+                        QPushButton {
+                            background-color: #007bff;
+                            color: white;
+                            border: none;
+                            padding: 10px 20px;
+                            border-radius: 6px;
+                            font-weight: bold;
+                            font-size: 14px;
+                        }
+                        QPushButton:hover {
+                            background-color: #0056b3;
+                        }
+                        QPushButton:pressed {
+                            background-color: #004085;
+                        }
+                    """)
+                    
+        except Exception as e:
+            print(f"Error updating compare button state: {e}")
+    
+    def open_version_comparison(self):
+        """Open version comparison dialog"""
+        try:
+            if len(self.selected_versions) != 2:
+                QMessageBox.warning(
+                    self, 
+                    "Invalid Selection", 
+                    "Please select exactly 2 versions to compare."
+                )
+                return
+            
+            # Find version data for the selected versions
+            version_a = None
+            version_b = None
+            
+            for version in self.versions:
+                if version['id'] == self.selected_versions[0]:
+                    version_a = version
+                elif version['id'] == self.selected_versions[1]:
+                    version_b = version
+            
+            if not version_a or not version_b:
+                QMessageBox.warning(
+                    self,
+                    "Version Not Found",
+                    "Could not find the selected versions for comparison."
+                )
+                return
+            
+            # Open comparison dialog
+            dialog = VersionComparisonDialog(version_a, version_b, self)
+            dialog.exec()
+            
+            # Refresh data after dialog closes (in case user saved a new version)
+            self.load_task_data()
+            
+        except Exception as e:
+            QMessageBox.critical(
+                self,
+                "Comparison Error", 
+                f"Failed to open version comparison: {str(e)}"
+            )
+            print(f"Error opening version comparison: {e}")
+    
+    def reset_version_selection(self):
+        """Reset version selection state"""
+        try:
+            # Clear selected versions
+            self.selected_versions = []
+            
+            # Uncheck all checkboxes
+            for checkbox in self.version_checkboxes.values():
+                checkbox.setChecked(False)
+            
+            # Clear checkbox references
+            self.version_checkboxes = {}
+            
+            # Update compare button
+            self.update_compare_button_state()
+            
+        except Exception as e:
+            print(f"Error resetting version selection: {e}")
+    
     def apply_theme(self, is_dark: bool):
         """Apply theme to the widget"""
         # Theme will be applied through stylesheets
