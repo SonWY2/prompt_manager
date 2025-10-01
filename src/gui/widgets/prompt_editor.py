@@ -763,15 +763,42 @@ class PromptEditor(QWidget):
         header_layout = QVBoxLayout(header_frame)
         header_layout.setContentsMargins(16, 12, 16, 12)
         
-        # Task title and actions
+        # Task title and actions - IMPROVED: Editable task name
         title_layout = QHBoxLayout()
         
-        self.task_title_label = QLabel("No Task Selected")
-        title_font = QFont()
-        title_font.setPointSize(16)
-        title_font.setBold(True)
-        self.task_title_label.setFont(title_font)
-        title_layout.addWidget(self.task_title_label)
+        # Task name section with label and editable field
+        task_name_section = QVBoxLayout()
+        task_name_section.setSpacing(4)
+        
+        # Task name label
+        task_name_label = QLabel("태스크 이름:")
+        task_name_label.setStyleSheet("font-size: 12px; color: #666; font-weight: 500;")
+        task_name_section.addWidget(task_name_label)
+        
+        # Editable task name field
+        self.task_title_edit = QLineEdit("No Task Selected")
+        self.task_title_edit.setStyleSheet("""
+            QLineEdit {
+                font-size: 16px;
+                font-weight: bold;
+                border: 1px solid transparent;
+                background-color: transparent;
+                padding: 4px 8px;
+                border-radius: 4px;
+            }
+            QLineEdit:hover {
+                border: 1px solid #d0d0d0;
+                background-color: #f8f9fa;
+            }
+            QLineEdit:focus {
+                border: 1px solid #1a73e8;
+                background-color: white;
+            }
+        """)
+        self.task_title_edit.editingFinished.connect(self.on_task_name_changed)
+        
+        task_name_section.addWidget(self.task_title_edit)
+        title_layout.addLayout(task_name_section)
         
         title_layout.addStretch()
         
@@ -819,10 +846,58 @@ class PromptEditor(QWidget):
         
         header_layout.addLayout(title_layout)
         
-        # Version timeline
-        self.version_timeline = VersionTimeline()
+        # Version selection - IMPROVED: Clean dropdown instead of timeline
+        version_section = QVBoxLayout()
+        version_section.setSpacing(4)
+        
+        # Version selection label
+        version_label = QLabel("버전 선택:")
+        version_label.setStyleSheet("font-size: 12px; color: #666; font-weight: 500;")
+        version_section.addWidget(version_label)
+        
+        # Version dropdown
+        self.version_selector = QComboBox()
+        self.version_selector.setMinimumWidth(250)
+        self.version_selector.setStyleSheet("""
+            QComboBox {
+                padding: 8px 12px;
+                border: 1px solid #ccc;
+                border-radius: 4px;
+                background-color: white;
+                font-size: 14px;
+                color: #333;
+            }
+            QComboBox:hover {
+                border-color: #999;
+            }
+            QComboBox:focus {
+                border-color: #1a73e8;
+            }
+            QComboBox::drop-down {
+                border: none;
+                width: 20px;
+            }
+            QComboBox::down-arrow {
+                image: none;
+                border: 5px solid transparent;
+                border-top: 5px solid #666;
+                margin-right: 5px;
+            }
+            QComboBox QAbstractItemView {
+                border: 1px solid #ccc;
+                background-color: white;
+                selection-background-color: #e3f2fd;
+            }
+        """)
+        self.version_selector.currentTextChanged.connect(self.on_version_selection_changed)
+        
+        version_section.addWidget(self.version_selector)
+        
+        # Keep reference to original timeline for compatibility, but don't display it
+        self.version_timeline = VersionTimeline()  # Hidden - for compatibility
         self.version_timeline.version_selected.connect(self.select_version)
-        header_layout.addWidget(self.version_timeline)
+        
+        header_layout.addLayout(version_section)
         
         layout.addWidget(header_frame)
         
@@ -1105,9 +1180,90 @@ class PromptEditor(QWidget):
     def update_header(self):
         """Update the header with task information"""
         if self.task_data:
-            self.task_title_label.setText(self.task_data.get('name', 'Untitled Task'))
+            self.task_title_edit.setText(self.task_data.get('name', 'Untitled Task'))
         else:
-            self.task_title_label.setText("No Task Selected")
+            self.task_title_edit.setText("No Task Selected")
+        
+        # Update version selector
+        self.update_version_selector()
+    
+    def update_version_selector(self):
+        """Update the version selector dropdown"""
+        # Clear existing items
+        self.version_selector.blockSignals(True)  # Prevent triggering change events
+        self.version_selector.clear()
+        
+        if not self.versions:
+            self.version_selector.addItem("No versions available")
+            self.version_selector.setEnabled(False)
+        else:
+            self.version_selector.setEnabled(True)
+            
+            # Add versions to combo box
+            for version in self.versions:
+                version_name = version.get('name', 'Untitled Version')
+                version_id = version.get('id', '')
+                
+                # Create display text with name and creation date
+                display_text = version_name
+                created_at = version.get('createdAt', '')
+                if created_at:
+                    try:
+                        dt = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
+                        formatted_date = dt.strftime("%Y-%m-%d %H:%M")
+                        display_text = f"{version_name} ({formatted_date})"
+                    except:
+                        pass
+                
+                self.version_selector.addItem(display_text, version_id)
+        
+        # Set current selection
+        if self.current_version_id and self.versions:
+            for i, version in enumerate(self.versions):
+                if version.get('id') == self.current_version_id:
+                    self.version_selector.setCurrentIndex(i)
+                    break
+        
+        self.version_selector.blockSignals(False)
+    
+    def on_task_name_changed(self):
+        """Handle task name change"""
+        if not self.current_task_id or not self.task_data:
+            return
+            
+        new_name = self.task_title_edit.text().strip()
+        current_name = self.task_data.get('name', '')
+        
+        if new_name and new_name != current_name:
+            try:
+                # Update task name in database
+                success = self.db_client.update_task(self.current_task_id, {'name': new_name})
+                
+                if success:
+                    # Update local task data
+                    self.task_data['name'] = new_name
+                    print(f"Task name updated to: {new_name}")
+                else:
+                    # Revert to original name if update failed
+                    self.task_title_edit.setText(current_name)
+                    print("Failed to update task name in database")
+                    
+            except Exception as e:
+                print(f"Error updating task name: {e}")
+                # Revert to original name
+                self.task_title_edit.setText(current_name)
+    
+    def on_version_selection_changed(self, text):
+        """Handle version selection change from dropdown"""
+        if not text or text == "No versions available":
+            return
+            
+        # Find the version ID for the selected item
+        current_index = self.version_selector.currentIndex()
+        if current_index >= 0 and current_index < len(self.versions):
+            version_id = self.versions[current_index].get('id')
+            if version_id and version_id != self.current_version_id:
+                self.select_version(version_id)
             
     def select_version(self, version_id: str):
         """Select a version for editing"""
