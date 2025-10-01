@@ -14,7 +14,7 @@ from PyQt6.QtWidgets import (
     QApplication, QPushButton, QLabel, QFrame
 )
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
-from PyQt6.QtGui import QIcon, QAction, QFont, QPixmap
+from PyQt6.QtGui import QIcon, QAction, QFont, QPixmap, QScreen
 
 # Import custom widgets
 from .widgets.task_navigator import TaskNavigator
@@ -37,6 +37,7 @@ class MainWindow(QMainWindow):
         # Initialize state
         self.current_task_id: Optional[str] = None
         self.current_version_id: Optional[str] = None
+        self.window_state_loaded = False
         
         # Initialize managers
         self.db_client = DatabaseClient()
@@ -273,6 +274,9 @@ class MainWindow(QMainWindow):
         self.task_navigator.task_created.connect(self.on_task_created)
         self.task_navigator.task_deleted.connect(self.on_task_deleted)
         
+        # Prompt editor connections
+        self.prompt_editor.version_changed.connect(self.on_version_changed)
+        
         # Tab change connections
         self.main_tabs.currentChanged.connect(self.on_tab_changed)
         
@@ -349,6 +353,20 @@ class MainWindow(QMainWindow):
             
         self.status_bar.showMessage("Task deleted", 2000)
         
+    def on_version_changed(self, task_id: str, version_id: str):
+        """Handle version selection from prompt editor"""
+        try:
+            if self.current_task_id == task_id:
+                self.current_version_id = version_id
+                
+                # Update result viewer with the selected version
+                self.result_viewer.set_version_id(version_id)
+                
+                print(f"Version changed: {version_id} for task: {task_id}")
+                
+        except Exception as e:
+            print(f"Error handling version change: {e}")
+        
     def on_tab_changed(self, index: int):
         """Handle tab change"""
         tab_names = ["Welcome", "Editor", "LLM Provider"]
@@ -367,6 +385,15 @@ class MainWindow(QMainWindow):
             "Built with PyQt6 and Python."
         )
         
+    def showEvent(self, event):
+        """Handle window show event"""
+        super().showEvent(event)
+        
+        # Load window state after window is shown but only once
+        if not self.window_state_loaded:
+            QTimer.singleShot(100, self.load_window_state)  # Small delay to ensure window is fully displayed
+            self.window_state_loaded = True
+            
     def closeEvent(self, event):
         """Handle application close event"""
         # Save window state
@@ -384,16 +411,21 @@ class MainWindow(QMainWindow):
             settings_path = Path("src/gui/settings.json")
             settings_path.parent.mkdir(exist_ok=True)
             
+            # Get current position using geometry() for consistent coordinate system
+            geom = self.geometry()
+            
             settings = {
                 "window_geometry": {
-                    "x": self.x(),
-                    "y": self.y(),
-                    "width": self.width(),
-                    "height": self.height()
+                    "x": geom.x(),
+                    "y": geom.y(), 
+                    "width": geom.width(),
+                    "height": geom.height()
                 },
                 "splitter_sizes": self.main_splitter.sizes(),
                 "current_tab": self.main_tabs.currentIndex()
             }
+            
+            print(f"Saving window position: x={geom.x()}, y={geom.y()}")  # Debug info
             
             with open(settings_path, 'w') as f:
                 json.dump(settings, f, indent=2)
@@ -411,15 +443,39 @@ class MainWindow(QMainWindow):
             with open(settings_path, 'r') as f:
                 settings = json.load(f)
                 
-            # Restore window geometry
+            # Restore window geometry with validation
             if "window_geometry" in settings:
                 geom = settings["window_geometry"]
-                self.setGeometry(geom["x"], geom["y"], geom["width"], geom["height"])
+                x, y, width, height = geom["x"], geom["y"], geom["width"], geom["height"]
+                
+                print(f"Loading window position: x={x}, y={y}")  # Debug info
+                
+                # Get screen geometry for validation
+                screen = QApplication.primaryScreen()
+                screen_rect = screen.availableGeometry()
+                
+                # Validate and correct window position
+                min_x = screen_rect.x() - width + 100
+                max_x = screen_rect.right() - 100
+                min_y = screen_rect.y()
+                max_y = screen_rect.bottom() - 100
+                
+                # Clamp position to valid range
+                x = max(min_x, min(x, max_x))
+                y = max(min_y, min(y, max_y))
+                
+                # Ensure reasonable window size
+                width = max(800, min(width, screen_rect.width()))
+                height = max(600, min(height, screen_rect.height()))
+                
+                # Simply set geometry - use same coordinate system for save/load
+                self.setGeometry(x, y, width, height)
+                
+                print(f"Set window position: x={x}, y={y}")  # Debug info
                 
             # Restore splitter sizes
             if "splitter_sizes" in settings:
                 self.main_splitter.setSizes(settings["splitter_sizes"])
-                
                 
             # Restore current tab
             if "current_tab" in settings:
@@ -427,6 +483,8 @@ class MainWindow(QMainWindow):
                 
         except Exception as e:
             print(f"Failed to load window state: {e}")
+            # If loading fails, use default geometry
+            self.setGeometry(100, 100, 1400, 900)
 
 
 def main():
@@ -440,8 +498,7 @@ def main():
     
     # Create and show main window
     window = MainWindow()
-    window.load_window_state()
-    window.show()
+    window.show()  # show() 먼저 호출
     
     # Start event loop
     sys.exit(app.exec())

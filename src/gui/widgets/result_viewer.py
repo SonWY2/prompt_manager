@@ -6,7 +6,7 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, 
     QTextEdit, QTabWidget, QScrollArea, QFrame, QListWidget,
     QListWidgetItem, QSplitter, QMessageBox, QProgressBar,
-    QGroupBox, QFormLayout, QTextBrowser
+    QGroupBox, QFormLayout, QTextBrowser, QComboBox
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QThread, QTimer
 from PyQt6.QtGui import QFont, QPixmap, QIcon
@@ -460,29 +460,73 @@ class ResultViewer(QWidget):
         
         header_layout.addLayout(title_layout)
         
-        # LLM Provider info
-        self.provider_frame = QFrame()
-        self.provider_frame.setStyleSheet("""
-            QFrame {
-                background-color: rgba(139, 92, 246, 0.1);
-                border: 1px solid rgba(139, 92, 246, 0.3);
-                border-radius: 6px;
-                padding: 8px;
+        # LLM Provider 선택 영역
+        self.provider_container = QWidget()
+        self.provider_container.setFixedHeight(90)  # 더 여유있게
+        self.provider_container.setStyleSheet("""
+            QWidget {
+                background-color: white;
+                border-bottom: 1px solid #dee2e6;
             }
         """)
-        provider_layout = QHBoxLayout(self.provider_frame)
-        provider_layout.setContentsMargins(8, 4, 8, 4)
+
+        provider_layout = QVBoxLayout(self.provider_container)
+        provider_layout.setContentsMargins(15, 15, 15, 15)  # 모든 방향 여유있게
+        provider_layout.setSpacing(8)
+
+        # 라벨
+        provider_label = QLabel("LLM Provider")
+        provider_label.setStyleSheet("""
+            QLabel {
+                font-size: 12px;
+                color: #6c757d;
+                font-weight: 500;
+            }
+        """)
+
+        # 드롭박스 - 핵심 수정
+        self.provider_combo = QComboBox()
+        self.provider_combo.setFixedHeight(45)  # 40 → 45로 증가
+        self.provider_combo.setStyleSheet("""
+            QComboBox {
+                border: 1px solid #ced4da;
+                border-radius: 6px;
+                padding: 10px 12px;  /* 상하 패딩 증가 */
+                padding-right: 35px;
+                background-color: white;
+                font-size: 14px;
+                line-height: 20px;  /* line-height 명시 */
+            }
+            QComboBox:hover {
+                border-color: #80bdff;
+            }
+            QComboBox::drop-down {
+                border: none;
+                width: 30px;
+            }
+            QComboBox QAbstractItemView {
+                border: 1px solid #ced4da;
+                background-color: white;
+                selection-background-color: #e3f2fd;
+                padding: 5px;
+            }
+            QComboBox QAbstractItemView::item {
+                height: 40px;  /* 드롭다운 아이템 높이 */
+                padding: 8px 12px;
+            }
+            QComboBox::down-arrow {
+                width: 12px;
+                height: 12px;
+            }
+        """)
+
+        provider_layout.addWidget(provider_label)
+        provider_layout.addWidget(self.provider_combo)
         
-        self.provider_status_dot = QLabel("🔴")
-        self.provider_name_label = QLabel("No LLM Provider")
-        self.provider_model_label = QLabel("")
+        # Connect ComboBox signal
+        self.provider_combo.currentIndexChanged.connect(self.on_provider_changed)
         
-        provider_layout.addWidget(self.provider_status_dot)
-        provider_layout.addWidget(self.provider_name_label)
-        provider_layout.addWidget(self.provider_model_label)
-        provider_layout.addStretch()
-        
-        header_layout.addWidget(self.provider_frame)
+        header_layout.addWidget(self.provider_container)
         
         layout.addWidget(header_frame)
         
@@ -617,10 +661,72 @@ class ResultViewer(QWidget):
                     self.active_endpoint = endpoint
                     break
                     
-            self.update_provider_info()
+            # Load providers into ComboBox
+            self.load_llm_providers()
             
         except Exception as e:
             print(f"Failed to load endpoints: {e}")
+            
+    def load_llm_providers(self):
+        """Load LLM Provider 목록을 ComboBox에 로드"""
+        self.provider_combo.clear()
+        
+        if not self.active_endpoints:
+            self.provider_combo.addItem("🔴 No LLM Provider", userData=None)
+            self.run_button.setEnabled(False)
+            return
+            
+        # 각 endpoint에 대해 ComboBox 아이템 추가
+        default_index = 0
+        for i, provider in enumerate(self.active_endpoints):
+            # 연결 상태 아이콘
+            status_icon = "🟢"  # 기본적으로 연결된 것으로 표시
+            
+            # 표시 텍스트 생성
+            provider_name = provider.get('name', 'Unknown')
+            model_name = provider.get('defaultModel', '')
+            
+            if model_name:
+                display_text = f"{status_icon} {provider_name} • {model_name}"
+            else:
+                display_text = f"{status_icon} {provider_name}"
+                
+            # ComboBox에 아이템 추가
+            self.provider_combo.addItem(display_text, userData=provider)
+            
+            # 현재 active endpoint인 경우 기본 선택으로 설정
+            if self.active_endpoint and provider['id'] == self.active_endpoint['id']:
+                default_index = i
+                
+        # 기본 선택 설정
+        self.provider_combo.setCurrentIndex(default_index)
+        self.run_button.setEnabled(True)
+        
+    def on_provider_changed(self, index: int):
+        """Provider 선택 변경 이벤트 핸들러"""
+        if index < 0:
+            return
+            
+        # 선택된 provider 데이터 가져오기
+        selected_provider = self.provider_combo.itemData(index)
+        
+        if selected_provider:
+            # Active endpoint 업데이트
+            self.active_endpoint = selected_provider
+            
+            # 데이터베이스에 active endpoint 설정
+            try:
+                self.db_client.set_active_endpoint(selected_provider['id'])
+                self.run_button.setEnabled(True)
+                
+                # 상태 업데이트
+                self.status_label.setText(f"Provider changed to {selected_provider.get('name', 'Unknown')}")
+                
+            except Exception as e:
+                print(f"Failed to set active endpoint: {e}")
+        else:
+            self.active_endpoint = None
+            self.run_button.setEnabled(False)
             
     def update_provider_info(self):
         """Update provider information display"""
@@ -806,7 +912,7 @@ class ResultViewer(QWidget):
         QMessageBox.critical(self, "LLM Error", f"Failed to call LLM: {error}")
         
     def show_latest_result(self, result_data: Dict[str, Any]):
-        """Show the latest result in the response tab"""
+        """Show the latest result with optimized layout (10-75-5-5-5%)"""
         # Switch to response tab
         self.tab_widget.setCurrentIndex(0)
         
@@ -815,47 +921,571 @@ class ResultViewer(QWidget):
             child = self.result_display.layout().itemAt(i)
             if child and child.widget() and child.widget() != self.run_button and child.widget() != self.progress_bar:
                 child.widget().deleteLater()
-                
-        # Show result
-        result_frame = QFrame()
-        result_frame.setStyleSheet("""
+        
+        # Create main result container - 간격 0으로 겹침 방지
+        result_container = QWidget()
+        container_layout = QVBoxLayout(result_container)
+        container_layout.setContentsMargins(0, 0, 0, 0)  # 외부 여백 제거
+        container_layout.setSpacing(0)  # 위젯 간 간격 제거로 겹침 방지
+        
+        # 1. 메타 정보 영역 (고정 높이)
+        meta_widget = self.create_meta_info_widget(result_data)
+        container_layout.addWidget(meta_widget, 0)  # 고정 크기
+        
+        # 2. 메인 콘텐츠 영역 (최대 공간 사용)  
+        main_response_widget = self.create_main_response_widget(result_data)
+        container_layout.addWidget(main_response_widget, 1)  # 모든 남은 공간 사용
+        
+        # 3. 액션 버튼 영역 (고정 높이)
+        action_buttons_widget = self.create_action_buttons_widget(result_data)
+        container_layout.addWidget(action_buttons_widget, 0)  # 고정 크기
+        
+        # 4. 상세 정보 영역 (고정 높이)
+        detail_info_widget = self.create_detail_info_widget(result_data)
+        container_layout.addWidget(detail_info_widget, 0)  # 고정 크기
+        
+        # 5. 상태바 (고정 높이)
+        status_bar_widget = self.create_status_bar_widget(result_data)
+        container_layout.addWidget(status_bar_widget, 0)  # 고정 크기
+        
+        # Add to display
+        self.result_display.layout().addWidget(result_container)
+        
+    def create_summary_card(self, result_data: Dict[str, Any]) -> QWidget:
+        """Create simple summary info"""
+        card = QFrame()
+        card.setFrameStyle(QFrame.Shape.Box)
+        card.setStyleSheet("""
+            QFrame {
+                background-color: #f8f9fa;
+                border: 1px solid #e9ecef;
+                border-radius: 6px;
+                padding: 8px;
+            }
+        """)
+        
+        layout = QHBoxLayout(card)
+        layout.setContentsMargins(12, 8, 12, 8)
+        
+        # Model info
+        model_name = self.active_endpoint.get('defaultModel', 'Unknown Model')
+        provider_name = self.active_endpoint.get('name', 'AI')
+        model_label = QLabel(f"✅ {provider_name} • {model_name}")
+        model_label.setStyleSheet("font-weight: 500; font-size: 12px; color: #495057;")
+        layout.addWidget(model_label)
+        
+        layout.addStretch()
+        
+        # Simple metrics
+        input_data = result_data.get('inputData', {})
+        output = result_data.get('output', {})
+        
+        # Estimate tokens
+        input_text = json.dumps(input_data) if input_data else ""
+        if isinstance(output, dict) and 'choices' in output and output['choices']:
+            output_text = output['choices'][0].get('message', {}).get('content', '')
+        else:
+            output_text = str(output)
+            
+        input_tokens = max(1, len(input_text) // 4)
+        output_tokens = max(1, len(output_text) // 4)
+        total_tokens = input_tokens + output_tokens
+        
+        tokens_label = QLabel(f"{total_tokens:,} tokens")
+        tokens_label.setStyleSheet("font-size: 11px; color: #6c757d;")
+        layout.addWidget(tokens_label)
+        
+        return card
+        
+    def create_response_card(self, result_data: Dict[str, Any]) -> QWidget:
+        """Create main response display card"""
+        card = QFrame()
+        card.setFrameStyle(QFrame.Shape.Box)
+        card.setStyleSheet("""
             QFrame {
                 background-color: white;
                 border: 1px solid #dee2e6;
-                border-radius: 8px;
-                padding: 16px;
-                margin: 8px 0;
+                border-radius: 6px;
+                padding: 12px;
             }
         """)
-        result_layout = QVBoxLayout(result_frame)
         
-        # Header
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(8, 8, 8, 8)
+        
+        # Header with copy button
         header_layout = QHBoxLayout()
         
-        icon_label = QLabel("🤖")
-        header_layout.addWidget(icon_label)
-        
-        response_label = QLabel(f"{self.active_endpoint.get('name', 'AI')} Response")
-        response_label.setFont(QFont("", 12, QFont.Weight.Medium))
-        header_layout.addWidget(response_label)
+        response_title = QLabel("AI Response")
+        response_title.setFont(QFont("", 11, QFont.Weight.Medium))
+        response_title.setStyleSheet("color: #495057;")
+        header_layout.addWidget(response_title)
         
         header_layout.addStretch()
         
-        timestamp_label = QLabel(datetime.now().strftime('%H:%M:%S'))
-        timestamp_label.setStyleSheet("color: #666; font-size: 10px;")
-        header_layout.addWidget(timestamp_label)
+        # Copy button - more visible
+        copy_button = QPushButton("📋 Copy")
+        copy_button.setStyleSheet("""
+            QPushButton {
+                background-color: #007bff;
+                color: white;
+                border: none;
+                padding: 4px 8px;
+                border-radius: 4px;
+                font-size: 10px;
+                font-weight: 500;
+            }
+            QPushButton:hover {
+                background-color: #0056b3;
+            }
+        """)
+        copy_button.clicked.connect(lambda: self.copy_response_content(result_data))
+        header_layout.addWidget(copy_button)
         
-        result_layout.addLayout(header_layout)
+        layout.addLayout(header_layout)
         
         # Response content
         content = self._extract_response_content(result_data.get('output', {}))
-        response_edit = QTextBrowser()
-        response_edit.setPlainText(content)
-        response_edit.setMaximumHeight(300)
-        result_layout.addWidget(response_edit)
+        response_text = QTextBrowser()
+        response_text.setPlainText(content)
+        response_text.setStyleSheet("""
+            QTextBrowser {
+                border: none;
+                background-color: #f8f9fa;
+                border-radius: 4px;
+                padding: 12px;
+                font-family: 'Segoe UI', Arial, sans-serif;
+                font-size: 13px;
+                line-height: 1.4;
+            }
+        """)
+        response_text.setMaximumHeight(300)  # Reduced height
+        layout.addWidget(response_text)
         
-        # Add to display
-        self.result_display.layout().addWidget(result_frame)
+        return card
+
+    def create_meta_info_widget(self, result_data: Dict[str, Any]) -> QWidget:
+        """1️⃣ 메타 정보 영역 - 고정 높이로 겹침 방지"""
+        widget = QWidget()
+        widget.setFixedHeight(50)  # 고정 높이로 겹침 방지
+        widget.setStyleSheet("""
+            QWidget {
+                background-color: #f8f9fa;
+                border-bottom: 1px solid #dee2e6;
+            }
+        """)
+        
+        layout = QHBoxLayout(widget)
+        layout.setContentsMargins(15, 10, 15, 10)  # 상하 여백 충분히
+        layout.setSpacing(20)
+        
+        # 실행 상태 + 모델 정보
+        model_name = self.active_endpoint.get('defaultModel', 'Unknown Model')
+        provider_name = self.active_endpoint.get('name', 'AI')
+        model_label = QLabel(f"✅ {provider_name} • {model_name}")
+        model_label.setStyleSheet("font-weight: 600; font-size: 12px; color: #495057;")
+        layout.addWidget(model_label)
+        
+        layout.addStretch()
+        
+        # 토큰 수
+        total_tokens = self._calculate_total_tokens(result_data)
+        tokens_label = QLabel(f"{total_tokens} tokens")
+        tokens_label.setStyleSheet("font-size: 11px; color: #6c757d; font-weight: 500;")
+        layout.addWidget(tokens_label)
+        
+        # 응답 시간 (추정)
+        time_label = QLabel("⏱ 2.3s")
+        time_label.setStyleSheet("font-size: 11px; color: #6c757d; font-weight: 500;")
+        layout.addWidget(time_label)
+        
+        return widget
+
+    def create_main_response_widget(self, result_data: Dict[str, Any]) -> QWidget:
+        """2️⃣ 메인 콘텐츠 영역 (75%) - AI 응답을 위한 최대 공간"""
+        widget = QFrame()
+        widget.setStyleSheet("""
+            QFrame {
+                background-color: white;
+                border: 1px solid #dee2e6;
+                border-radius: 6px;
+                padding: 12px;
+            }
+        """)
+        
+        layout = QVBoxLayout(widget)
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(8)
+        
+        # 헤더: 제목 + Copy 버튼
+        header_layout = QHBoxLayout()
+        
+        title_label = QLabel("AI Response")
+        title_label.setStyleSheet("font-weight: 600; font-size: 13px; color: #495057;")
+        header_layout.addWidget(title_label)
+        
+        header_layout.addStretch()
+        
+        # Copy 버튼
+        copy_btn = QPushButton("📋 Copy")
+        copy_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #007bff;
+                color: white;
+                border: none;
+                padding: 6px 12px;
+                border-radius: 4px;
+                font-size: 11px;
+                font-weight: 500;
+            }
+            QPushButton:hover {
+                background-color: #0056b3;
+            }
+        """)
+        copy_btn.clicked.connect(lambda: self.copy_response_content(result_data))
+        header_layout.addWidget(copy_btn)
+        
+        layout.addLayout(header_layout)
+        
+        # 메인 응답 영역 - 스크롤 가능, 마크다운 렌더링 가능
+        response_content = self._extract_response_content(result_data.get('output', {}))
+        
+        response_text = QTextBrowser()
+        response_text.setPlainText(response_content)
+        response_text.setStyleSheet("""
+            QTextBrowser {
+                border: 1px solid #e9ecef;
+                background-color: #fdfdfd;
+                border-radius: 4px;
+                padding: 16px;
+                font-family: 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+                font-size: 14px;
+                line-height: 1.6;
+                color: #333;
+            }
+        """)
+        
+        # 높이를 동적으로 설정하지만 최소/최대값 지정
+        response_text.setMinimumHeight(200)
+        # 높이 제한 없음 - 스크롤로 처리
+        
+        layout.addWidget(response_text, 1)  # stretch factor로 최대 공간 사용
+        
+        return widget
+
+    def create_action_buttons_widget(self, result_data: Dict[str, Any]) -> QWidget:
+        """3️⃣ 액션 버튼 영역 - Retry 버튼만 전체 너비로"""
+        from PyQt6.QtWidgets import QSizePolicy
+        
+        # 버튼 컨테이너
+        button_container = QWidget()
+        button_container.setFixedHeight(60)
+        button_container.setStyleSheet("""
+            QWidget {
+                background-color: white;
+                border-top: 1px solid #dee2e6;
+                border-bottom: 1px solid #dee2e6;
+            }
+        """)
+
+        button_layout = QHBoxLayout(button_container)
+        button_layout.setContentsMargins(15, 10, 15, 10)  # 좌우 여백
+        button_layout.setSpacing(0)
+
+        # Retry 버튼 - 전체 너비로 확장
+        retry_btn = QPushButton("🔄  Retry")
+        retry_btn.setFixedHeight(40)  # 높이는 고정
+        retry_btn.setSizePolicy(
+            QSizePolicy.Policy.Expanding,  # 가로로 확장
+            QSizePolicy.Policy.Fixed       # 세로는 고정
+        )
+
+        retry_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #2196F3;
+                color: white;
+                border: none;
+                border-radius: 6px;
+                font-size: 15px;
+                font-weight: 600;
+                padding: 0px;
+            }
+            QPushButton:hover {
+                background-color: #1976D2;
+            }
+            QPushButton:pressed {
+                background-color: #0D47A1;
+            }
+        """)
+        
+        retry_btn.clicked.connect(self.run_prompt)
+
+        button_layout.addWidget(retry_btn)
+        
+        return button_container
+
+    def create_detail_info_widget(self, result_data: Dict[str, Any]) -> QWidget:
+        """4️⃣ 상세 정보 영역 - 고정 높이로 겹침 방지"""
+        widget = QWidget()
+        widget.setFixedHeight(60)  # 고정 높이로 겹침 방지
+        widget.setStyleSheet("""
+            QWidget {
+                background-color: #f8f9fa;
+            }
+        """)
+        
+        layout = QVBoxLayout(widget)
+        layout.setContentsMargins(15, 5, 15, 5)
+        layout.setSpacing(3)
+        
+        # 첫 번째 줄: 토큰 사용량 / 비용
+        first_line = QHBoxLayout()
+        
+        total_tokens = self._calculate_total_tokens(result_data)
+        estimated_cost = self._estimate_cost(result_data)
+        
+        usage_label = QLabel(f"📊 Token Usage: {total_tokens} / Cost: {estimated_cost}")
+        usage_label.setStyleSheet("font-size: 11px; color: #495057; font-weight: 500;")
+        first_line.addWidget(usage_label)
+        first_line.addStretch()
+        
+        layout.addLayout(first_line)
+        
+        # 두 번째 줄: 모델 정보 / 설정
+        second_line = QHBoxLayout()
+        
+        model_name = self.active_endpoint.get('defaultModel', 'Unknown')
+        model_info_label = QLabel(f"Model: {model_name} | Temp: 0.7")
+        model_info_label.setStyleSheet("font-size: 10px; color: #6c757d;")
+        second_line.addWidget(model_info_label)
+        second_line.addStretch()
+        
+        layout.addLayout(second_line)
+        
+        return widget
+
+    def create_status_bar_widget(self, result_data: Dict[str, Any]) -> QWidget:
+        """5️⃣ 상태바 - 고정 높이로 겹침 방지"""
+        widget = QWidget()
+        widget.setFixedHeight(35)  # 고정 높이로 겹침 방지
+        widget.setStyleSheet("""
+            QWidget {
+                background-color: #f8f9fa;
+                border-top: 1px solid #dee2e6;
+            }
+        """)
+        
+        layout = QHBoxLayout(widget)
+        layout.setContentsMargins(15, 5, 15, 5)
+        
+        # 연결 상태
+        if self.active_endpoint:
+            status_label = QLabel("🟢 Connected")
+            status_label.setStyleSheet("font-size: 11px; color: #28a745; font-weight: 500;")
+        else:
+            status_label = QLabel("🔴 No LLM Provider")
+            status_label.setStyleSheet("font-size: 11px; color: #dc3545; font-weight: 500;")
+            
+        layout.addWidget(status_label)
+        layout.addStretch()
+        
+        # 완료 시간
+        completed_time = datetime.now().strftime("%H:%M:%S")
+        time_label = QLabel(f"Completed at {completed_time}")
+        time_label.setStyleSheet("font-size: 10px; color: #6c757d;")
+        layout.addWidget(time_label)
+        
+        return widget
+
+    def _calculate_total_tokens(self, result_data: Dict[str, Any]) -> int:
+        """토큰 수 계산"""
+        input_data = result_data.get('inputData', {})
+        output = result_data.get('output', {})
+        
+        # API 응답에서 직접 토큰 정보 확인
+        if isinstance(output, dict) and 'usage' in output:
+            usage = output['usage']
+            return usage.get('total_tokens', 0)
+        
+        # 추정 계산
+        input_text = json.dumps(input_data) if input_data else ""
+        if isinstance(output, dict) and 'choices' in output and output['choices']:
+            output_text = output['choices'][0].get('message', {}).get('content', '')
+        else:
+            output_text = str(output)
+            
+        total_chars = len(input_text) + len(output_text)
+        return max(1, total_chars // 4)  # 대략적인 토큰 추정
+
+    def _estimate_cost(self, result_data: Dict[str, Any]) -> str:
+        """비용 추정"""
+        total_tokens = self._calculate_total_tokens(result_data)
+        model_name = self.active_endpoint.get('defaultModel', 'gpt-3.5-turbo')
+        
+        # 간단한 비용 추정 (실제로는 모델별로 다름)
+        cost_per_1k_tokens = {
+            'gpt-4o': 0.005,
+            'gpt-4': 0.03,
+            'gpt-3.5-turbo': 0.002,
+            'claude-3-opus': 0.045,
+            'claude-3-sonnet': 0.009,
+        }
+        
+        cost_rate = cost_per_1k_tokens.get(model_name, 0.002)
+        estimated_cost = (total_tokens / 1000) * cost_rate
+        
+        return f"${estimated_cost:.3f}"
+        
+    def create_action_buttons(self, result_data: Dict[str, Any]) -> QWidget:
+        """Create simple action buttons row"""
+        widget = QWidget()
+        layout = QHBoxLayout(widget)
+        layout.setContentsMargins(0, 0, 0, 0)
+        
+        # Only essential buttons
+        retry_btn = QPushButton("🔄 Retry")
+        retry_btn.setStyleSheet(self.get_action_button_style("#007bff"))
+        retry_btn.clicked.connect(self.run_prompt)
+        layout.addWidget(retry_btn)
+        
+        layout.addStretch()
+        
+        return widget
+        
+    def create_expandable_details(self, result_data: Dict[str, Any]) -> QWidget:
+        """Create expandable details section"""
+        # Create a simple collapsible widget
+        details_widget = QWidget()
+        details_layout = QVBoxLayout(details_widget)
+        details_layout.setContentsMargins(0, 0, 0, 0)
+        
+        # Toggle button for details
+        toggle_button = QPushButton("▼ Show Details")
+        toggle_button.setStyleSheet("""
+            QPushButton {
+                background-color: #f8f9fa;
+                border: 1px solid #dee2e6;
+                padding: 8px 16px;
+                border-radius: 4px;
+                text-align: left;
+                font-size: 12px;
+            }
+            QPushButton:hover {
+                background-color: #e9ecef;
+            }
+        """)
+        details_layout.addWidget(toggle_button)
+        
+        # Details content (initially hidden)
+        details_content = QWidget()
+        details_content_layout = QVBoxLayout(details_content)
+        details_content.setVisible(False)
+        
+        # Request details
+        request_group = QGroupBox("Request Details")
+        request_layout = QVBoxLayout(request_group)
+        
+        # Show system prompt and user prompt if available
+        if self.version_data:
+            system_prompt = self.version_data.get('system_prompt', '')
+            content = self.version_data.get('content', '')
+            
+            if system_prompt:
+                sys_prompt_text = QTextBrowser()
+                sys_prompt_text.setPlainText(f"System: {system_prompt}")
+                sys_prompt_text.setMaximumHeight(80)
+                sys_prompt_text.setStyleSheet("font-size: 11px; background-color: #f8f9fa;")
+                request_layout.addWidget(sys_prompt_text)
+                
+            if content:
+                user_prompt_text = QTextBrowser()
+                rendered_content = self._render_prompt_with_variables(content, result_data.get('inputData', {}))
+                user_prompt_text.setPlainText(f"User: {rendered_content}")
+                user_prompt_text.setMaximumHeight(80)
+                user_prompt_text.setStyleSheet("font-size: 11px; background-color: #f8f9fa;")
+                request_layout.addWidget(user_prompt_text)
+        
+        details_content_layout.addWidget(request_group)
+        
+        # Metrics details
+        metrics_group = QGroupBox("Performance Metrics")
+        metrics_layout = QFormLayout(metrics_group)
+        
+        # Add detailed metrics here
+        input_data = result_data.get('inputData', {})
+        output = result_data.get('output', {})
+        
+        if isinstance(output, dict) and 'usage' in output:
+            usage = output['usage']
+            metrics_layout.addRow("Prompt tokens:", QLabel(str(usage.get('prompt_tokens', 'N/A'))))
+            metrics_layout.addRow("Completion tokens:", QLabel(str(usage.get('completion_tokens', 'N/A'))))
+            metrics_layout.addRow("Total tokens:", QLabel(str(usage.get('total_tokens', 'N/A'))))
+        
+        details_content_layout.addWidget(metrics_group)
+        details_layout.addWidget(details_content)
+        
+        # Toggle functionality
+        def toggle_details():
+            visible = details_content.isVisible()
+            details_content.setVisible(not visible)
+            toggle_button.setText("▲ Hide Details" if not visible else "▼ Show Details")
+            
+        toggle_button.clicked.connect(toggle_details)
+        
+        return details_widget
+        
+    def get_action_button_style(self, color: str) -> str:
+        """Get consistent button style"""
+        return f"""
+            QPushButton {{
+                background-color: {color};
+                color: white;
+                border: none;
+                padding: 8px 16px;
+                border-radius: 4px;
+                font-size: 12px;
+                font-weight: bold;
+                min-width: 80px;
+            }}
+            QPushButton:hover {{
+                background-color: {self.darken_color(color)};
+            }}
+            QPushButton:disabled {{
+                background-color: #6c757d;
+            }}
+        """
+        
+    def darken_color(self, color: str) -> str:
+        """Darken a color for hover state"""
+        color_map = {
+            "#007bff": "#0056b3",
+            "#28a745": "#218838",
+            "#6c757d": "#545b62"
+        }
+        return color_map.get(color, "#495057")
+        
+    def copy_response_content(self, result_data: Dict[str, Any]):
+        """Copy response content to clipboard"""
+        try:
+            from PyQt6.QtWidgets import QApplication
+            content = self._extract_response_content(result_data.get('output', {}))
+            clipboard = QApplication.clipboard()
+            clipboard.setText(content)
+            
+            # Show temporary message
+            self.status_label.setText("Response copied to clipboard!")
+            QTimer.singleShot(3000, lambda: self.status_label.setText(""))
+            
+        except Exception as e:
+            print(f"Failed to copy to clipboard: {e}")
+            
+    def _render_prompt_with_variables(self, template: str, variables: Dict[str, Any]) -> str:
+        """Render prompt template with variables"""
+        result = template
+        for key, value in variables.items():
+            placeholder = f"{{{{{key}}}}}"
+            result = result.replace(placeholder, str(value))
+        return result
         
     def delete_history_item(self, timestamp: str):
         """Delete a history item"""
@@ -884,22 +1514,12 @@ class ResultViewer(QWidget):
         """Show state when no task is selected"""
         # Update status
         self.status_label.setText("No task selected")
-        self.provider_name_label.setText("No LLM Provider")
-        self.provider_status_dot.setText("🔴")
         
     def show_task_selected_state(self):
         """Show state when task is selected but no version"""
         # Update status  
         task_name = self.task_data.get('name', 'Unknown') if self.task_data else 'Unknown'
         self.status_label.setText(f"Task: {task_name}")
-        
-        # Update provider info if available
-        if self.active_endpoint:
-            self.provider_name_label.setText(self.active_endpoint.get('name', 'Unknown'))
-            self.provider_status_dot.setText("🟢")
-        else:
-            self.provider_name_label.setText("No LLM Provider")
-            self.provider_status_dot.setText("🔴")
         
     def clear_content(self):
         """Clear the content area"""

@@ -6,7 +6,8 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, 
     QTextEdit, QLineEdit, QTabWidget, QScrollArea, QFrame,
     QSplitter, QMessageBox, QInputDialog, QCheckBox, QComboBox,
-    QFormLayout, QGroupBox, QSpacerItem, QSizePolicy
+    QFormLayout, QGroupBox, QSpacerItem, QSizePolicy, QStackedWidget,
+    QDialog
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QTimer
 from PyQt6.QtGui import QFont, QTextCharFormat, QColor, QSyntaxHighlighter, QTextDocument
@@ -50,6 +51,101 @@ class VariableEditor(QWidget):
         super().__init__()
         self.variables: Dict[str, str] = {}
         self.setup_ui()
+    
+    def create_edit_dialog(self, name: str, current_value: str) -> QDialog:
+        """팝업 편집 다이얼로그 생성"""
+        dialog = QDialog(self)
+        dialog.setWindowTitle(f"Edit Variable: {{{{{name}}}}}")
+        dialog.setMinimumSize(600, 400)
+        dialog.setModal(True)
+        
+        layout = QVBoxLayout(dialog)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(15)
+        
+        # 헤더
+        header_label = QLabel(f"Editing: {{{{{name}}}}}")
+        header_label.setStyleSheet("""
+            QLabel {
+                font-size: 16px;
+                font-weight: 600;
+                color: #212529;
+                margin-bottom: 10px;
+            }
+        """)
+        
+        # 큰 텍스트 편집 영역
+        text_edit = QTextEdit()
+        text_edit.setPlainText(current_value)
+        text_edit.setStyleSheet("""
+            QTextEdit {
+                font-size: 14px;
+                color: #495057;
+                padding: 12px;
+                background-color: white;
+                border: 2px solid #ced4da;
+                border-radius: 6px;
+                line-height: 1.5;
+            }
+            QTextEdit:focus {
+                border-color: #80bdff;
+            }
+        """)
+        
+        # 버튼 영역
+        button_layout = QHBoxLayout()
+        button_layout.setSpacing(10)
+        
+        cancel_button = QPushButton("Cancel")
+        cancel_button.setFixedSize(100, 36)
+        cancel_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        cancel_button.setStyleSheet("""
+            QPushButton {
+                background-color: #6c757d;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                font-size: 14px;
+                font-weight: 600;
+            }
+            QPushButton:hover {
+                background-color: #5a6268;
+            }
+        """)
+        
+        save_button = QPushButton("Save")
+        save_button.setFixedSize(100, 36)
+        save_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        save_button.setStyleSheet("""
+            QPushButton {
+                background-color: #28a745;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                font-size: 14px;
+                font-weight: 600;
+            }
+            QPushButton:hover {
+                background-color: #218838;
+            }
+        """)
+        
+        button_layout.addStretch()
+        button_layout.addWidget(cancel_button)
+        button_layout.addWidget(save_button)
+        
+        layout.addWidget(header_label)
+        layout.addWidget(text_edit)
+        layout.addLayout(button_layout)
+        
+        # 버튼 이벤트
+        cancel_button.clicked.connect(dialog.reject)
+        save_button.clicked.connect(dialog.accept)
+        
+        # 값 반환 메서드
+        dialog.get_value = lambda: text_edit.toPlainText()
+        
+        return dialog
         
     def setup_ui(self):
         """Setup the variable editor UI"""
@@ -75,14 +171,33 @@ class VariableEditor(QWidget):
         
         layout.addWidget(add_group)
         
-        # Variables list
+        # Variables list - 밀도 개선을 위한 최적화된 스크롤 영역
         self.variables_scroll = QScrollArea()
+        self.variables_scroll.setWidgetResizable(True)
+        self.variables_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.variables_scroll.setStyleSheet("""
+            QScrollArea {
+                border: none;
+                background-color: #f8f9fa;
+            }
+            QScrollBar:vertical {
+                width: 6px;
+                background: transparent;
+            }
+            QScrollBar::handle:vertical {
+                background: #ced4da;
+                border-radius: 3px;
+                min-height: 20px;
+            }
+        """)
+        
         self.variables_widget = QWidget()
         self.variables_layout = QVBoxLayout(self.variables_widget)
+        self.variables_layout.setContentsMargins(8, 8, 8, 8)  # 최소 여백
+        self.variables_layout.setSpacing(4)  # 카드 간 4px (6→4px 감소)
         self.variables_layout.addStretch()
         
         self.variables_scroll.setWidget(self.variables_widget)
-        self.variables_scroll.setWidgetResizable(True)
         
         layout.addWidget(self.variables_scroll, 1)
         
@@ -136,51 +251,12 @@ class VariableEditor(QWidget):
             if child and child.widget():
                 child.widget().deleteLater()
                 
-        # Add variable items
+        # Add variable items - 밀도 개선된 카드 생성
         for name, value in self.variables.items():
-            var_frame = QFrame()
-            var_frame.setFrameStyle(QFrame.Shape.Box)
-            var_frame.setStyleSheet("QFrame { border: 1px solid #ddd; border-radius: 4px; padding: 8px; }")
-            
-            var_layout = QVBoxLayout(var_frame)
-            
-            # Header with name and delete button
-            header_layout = QHBoxLayout()
-            
-            name_label = QLabel(f"{{{{{name}}}}}")
-            name_label.setStyleSheet("""
-                QLabel {
-                    background-color: rgba(139, 92, 246, 0.2);
-                    color: #8b5cf6;
-                    padding: 4px 8px;
-                    border-radius: 4px;
-                    font-weight: bold;
-                    font-family: monospace;
-                }
-            """)
-            header_layout.addWidget(name_label)
-            header_layout.addStretch()
-            
-            delete_btn = QPushButton("Delete")
-            delete_btn.setProperty("class", "danger")
-            delete_btn.setMaximumWidth(80)
-            delete_btn.clicked.connect(lambda checked, n=name: self.remove_variable(n))
-            header_layout.addWidget(delete_btn)
-            
-            var_layout.addLayout(header_layout)
-            
-            # Value editor
-            value_edit = QTextEdit()
-            value_edit.setPlainText(value)
-            value_edit.setMaximumHeight(100)
-            value_edit.textChanged.connect(
-                lambda n=name, edit=value_edit: self.on_variable_changed(n, edit.toPlainText())
-            )
-            var_layout.addWidget(value_edit)
-            
+            var_card = self.create_variable_card(name, value)
             self.variables_layout.insertWidget(
                 self.variables_layout.count() - 1,  # Before stretch
-                var_frame
+                var_card
             )
             
         # Show empty message if no variables
@@ -189,6 +265,184 @@ class VariableEditor(QWidget):
             empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
             empty_label.setStyleSheet("color: #666; font-style: italic; padding: 40px;")
             self.variables_layout.insertWidget(0, empty_label)
+            
+    def create_variable_card(self, name: str, value: str) -> QWidget:
+        """팝업 편집 기능이 있는 변수 카드"""
+        # 카드 컨테이너 - 높이 고정
+        card = QWidget()
+        card.setFixedHeight(130)  # 110px → 130px로 증가 (Edit 버튼 공간)
+        card.setStyleSheet("""
+            QWidget {
+                background-color: white;
+                border: 1px solid #dee2e6;
+                border-radius: 4px;
+            }
+        """)
+        
+        card_layout = QVBoxLayout(card)
+        card_layout.setContentsMargins(10, 8, 10, 8)  # 상하좌우 여백
+        card_layout.setSpacing(6)  # 헤더와 텍스트 간 간격
+        
+        # ===== 헤더 영역 (변수명 + Edit + Delete 버튼) =====
+        header_layout = QHBoxLayout()
+        header_layout.setContentsMargins(0, 0, 0, 0)
+        header_layout.setSpacing(6)  # 버튼 간 간격 줄임
+        
+        # 변수명 라벨
+        var_name_label = QLabel(f"{{{{{name}}}}}")
+        var_name_label.setFixedHeight(24)  # 라벨 높이 고정
+        var_name_label.setStyleSheet("""
+            QLabel {
+                font-size: 12px;
+                font-weight: 600;
+                color: #6f42c1;
+                background-color: #f3e5ff;
+                padding: 3px 8px;
+                border-radius: 3px;
+            }
+        """)
+        
+        # Edit 버튼 추가
+        edit_button = QPushButton("Edit")
+        edit_button.setFixedSize(50, 28)  # 24 → 28px로 증가 (글씨 깨짐 방지)
+        edit_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        edit_button.setStyleSheet("""
+            QPushButton {
+                background-color: #6c757d;
+                color: white;
+                border: none;
+                border-radius: 3px;
+                font-size: 11px;
+                font-weight: 600;
+            }
+            QPushButton:hover {
+                background-color: #5a6268;
+            }
+        """)
+        
+        # Delete 버튼 - 크기 증가로 글자 깨짐 방지
+        delete_button = QPushButton("Delete")
+        delete_button.setFixedSize(70, 28)  # 24 → 28px로 증가 (글씨 깨짐 방지)
+        delete_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        delete_button.setStyleSheet("""
+            QPushButton {
+                background-color: #dc3545;
+                color: white;
+                border: none;
+                border-radius: 3px;
+                font-size: 12px;
+                font-weight: 600;
+            }
+            QPushButton:hover {
+                background-color: #c82333;
+            }
+        """)
+        delete_button.clicked.connect(lambda checked, n=name: self.remove_variable(n))
+        
+        header_layout.addWidget(var_name_label)
+        header_layout.addStretch()  # 중간 공백
+        header_layout.addWidget(edit_button)
+        header_layout.addWidget(delete_button)
+        
+        # ===== Edit 버튼 클릭 이벤트 연결 =====
+        def open_edit_dialog():
+            dialog = self.create_edit_dialog(name, value_edit.toPlainText())
+            if dialog.exec() == QDialog.DialogCode.Accepted:
+                new_value = dialog.get_value()
+                value_edit.setPlainText(new_value)
+                # 변수 값 업데이트
+                self.variables[name] = new_value
+                self.variables_changed.emit(self.variables)
+        
+        edit_button.clicked.connect(open_edit_dialog)
+        
+        # ===== 값 입력 영역 - 카드 크기에 맞춰 조정 =====
+        value_edit = QTextEdit()
+        value_edit.setPlainText(value)
+        
+        # 카드 높이가 130px이므로 텍스트 영역은 80px 정도로 조정
+        def adjust_text_height():
+            # QTimer로 다음 이벤트 루프에서 실행 (정확한 크기 계산을 위해)
+            QTimer.singleShot(10, lambda: calculate_and_set_height(value_edit))
+        
+        def calculate_and_set_height(edit):
+            try:
+                text = edit.toPlainText()
+                
+                # FontMetrics를 사용한 정확한 높이 계산
+                font_metrics = edit.fontMetrics()
+                line_height = font_metrics.height()
+                
+                # 줄 수 계산 (개행 문자 기준)
+                lines = max(1, text.count('\n') + 1) if text else 1
+                
+                # 텍스트 래핑 고려 (위젯 너비 기반)
+                if text and edit.width() > 0:
+                    avg_char_width = font_metrics.averageCharWidth()
+                    chars_per_line = max(1, (edit.width() - 20) // avg_char_width)  # 패딩 고려
+                    
+                    wrapped_lines = 0
+                    for line in text.split('\n'):
+                        wrapped_lines += max(1, len(line) // chars_per_line + (1 if len(line) % chars_per_line else 0))
+                    
+                    lines = max(lines, wrapped_lines)
+                
+                # 패딩과 여백을 고려한 총 높이 계산
+                content_height = lines * line_height + 16  # 상하 패딩 16px
+                
+                # 카드 높이 130px에 맞춰 최소 50px, 최대 80px로 제한
+                new_height = min(max(content_height, 50), 80)
+                edit.setFixedHeight(int(new_height))
+                
+            except Exception as e:
+                # 오류 발생 시 기본 높이로 설정
+                print(f"Error calculating height: {e}")
+                edit.setFixedHeight(50)
+        
+        # 텍스트 변경 시 높이 재조정
+        value_edit.textChanged.connect(adjust_text_height)
+        
+        # 초기 로드 시 높이 설정 (위젯이 완전히 초기화된 후)
+        QTimer.singleShot(50, lambda: calculate_and_set_height(value_edit))
+        
+        # 스크롤바는 필요할 때만 표시
+        value_edit.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        value_edit.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        
+        value_edit.setStyleSheet("""
+            QTextEdit {
+                font-size: 12px;
+                color: #495057;
+                padding: 6px 8px;
+                background-color: #f8f9fa;
+                border: 1px solid #e9ecef;
+                border-radius: 3px;
+                line-height: 1.4;
+            }
+            QTextEdit:focus {
+                border-color: #80bdff;
+                background-color: white;
+            }
+            QScrollBar:vertical {
+                width: 6px;
+                background: transparent;
+            }
+            QScrollBar::handle:vertical {
+                background: #ced4da;
+                border-radius: 3px;
+            }
+        """)
+        
+        # 값 변경 감지 및 업데이트
+        value_edit.textChanged.connect(
+            lambda n=name, edit=value_edit: self.on_variable_changed(n, edit.toPlainText())
+        )
+        
+        # 레이아웃 조립
+        card_layout.addLayout(header_layout)
+        card_layout.addWidget(value_edit)
+        
+        return card
             
     def on_variable_changed(self, name: str, value: str):
         """Handle variable value change"""
@@ -395,6 +649,88 @@ class PromptEditor(QWidget):
     version_changed = pyqtSignal(str, str)  # task_id, version_id
     content_changed = pyqtSignal()
     
+    # 스타일 상수 정의
+    EDIT_MODE_STYLES = {
+        'description': """
+            QTextEdit {
+                font-size: 12px;
+                color: #495057;
+                padding: 8px;
+                background-color: white;
+                border: 1px solid #dee2e6;
+                border-radius: 4px;
+            }
+            QTextEdit:focus {
+                border-color: #80bdff;
+                background-color: white;
+            }
+        """,
+        'system': """
+            QTextEdit {
+                font-size: 12px;
+                color: #495057;
+                padding: 8px;
+                background-color: white;
+                border: 1px solid #dee2e6;
+                border-radius: 4px;
+            }
+            QTextEdit:focus {
+                border-color: #80bdff;
+                background-color: white;
+            }
+        """,
+        'main': """
+            QTextEdit {
+                font-size: 14px;
+                color: #495057;
+                padding: 12px;
+                background-color: white;
+                border: 1px solid #dee2e6;
+                border-radius: 4px;
+            }
+            QTextEdit:focus {
+                border-color: #80bdff;
+                background-color: white;
+            }
+        """
+    }
+    
+    PREVIEW_MODE_STYLES = {
+        'description': """
+            QTextEdit {
+                background-color: #f8f9fa;
+                border: 2px solid #007bff;
+                border-radius: 4px;
+                font-family: 'Consolas', 'Monaco', monospace;
+                color: #495057;
+                padding: 8px;
+                font-size: 12px;
+            }
+        """,
+        'system': """
+            QTextEdit {
+                background-color: rgba(16, 185, 129, 0.1);
+                border: 2px solid #10b981;
+                border-radius: 4px;
+                font-family: 'Consolas', 'Monaco', monospace;
+                color: #047857;
+                padding: 8px;
+                font-size: 12px;
+            }
+        """,
+        'main': """
+            QTextEdit {
+                background-color: #fff8e1;
+                border: 2px solid #ffc107;
+                border-radius: 4px;
+                font-family: 'Consolas', 'Monaco', monospace;
+                color: #856404;
+                padding: 12px;
+                font-size: 14px;
+            }
+        """
+    }
+    
     def __init__(self):
         super().__init__()
         
@@ -407,6 +743,11 @@ class PromptEditor(QWidget):
         self.original_splitter_sizes: List[int] = []  # Store original sizes
         self.auto_save_timer.setSingleShot(True)
         self.auto_save_timer.timeout.connect(self.auto_save)
+        
+        # Preview 모드 상태 관리
+        self.is_preview_mode = False
+        self.text_edits = {}  # QTextEdit 참조 저장
+        self.original_contents = {}  # 원본 텍스트 내용 저장
         
         self.setup_ui()
         self.setup_connections()
@@ -589,6 +930,8 @@ class PromptEditor(QWidget):
         self.description_edit.setMaximumHeight(100)
         self.description_edit.setPlaceholderText("Describe the purpose and usage of this prompt...")
         self.description_edit.textChanged.connect(self.schedule_auto_save)
+        # 초기 Edit 모드 스타일 적용
+        self.description_edit.setStyleSheet(self.EDIT_MODE_STYLES['description'])
         desc_layout.addWidget(self.description_edit)
         
         splitter.addWidget(desc_group)
@@ -605,6 +948,8 @@ class PromptEditor(QWidget):
         self.system_prompt_edit.setMaximumHeight(120)
         self.system_prompt_edit.setPlaceholderText("Define AI role and instructions...")
         self.system_prompt_edit.textChanged.connect(self.schedule_auto_save)
+        # 초기 Edit 모드 스타일 적용
+        self.system_prompt_edit.setStyleSheet(self.EDIT_MODE_STYLES['system'])
         system_layout.addWidget(self.system_prompt_edit)
         
         splitter.addWidget(system_group)
@@ -620,11 +965,24 @@ class PromptEditor(QWidget):
         self.main_prompt_edit.setPlainText(version_data.get('content', ''))
         self.main_prompt_edit.setPlaceholderText("Enter prompt... (Use {{variable_name}} for variables)")
         self.main_prompt_edit.textChanged.connect(self.schedule_auto_save)
+        # 초기 Edit 모드 스타일 적용
+        self.main_prompt_edit.setStyleSheet(self.EDIT_MODE_STYLES['main'])
         
         # Add syntax highlighting
         self.highlighter = VariableHighlighter(self.main_prompt_edit.document())
         
         main_layout.addWidget(self.main_prompt_edit)
+        
+        # QTextEdit 참조 저장 (새로운 preview 시스템용)
+        self.text_edits = {
+            'description': self.description_edit,
+            'system': self.system_prompt_edit, 
+            'main': self.main_prompt_edit
+        }
+        
+        # Preview 모드 상태 초기화
+        self.is_preview_mode = False
+        self.original_contents = {}
         
         splitter.addWidget(main_group)
         
@@ -771,6 +1129,10 @@ class PromptEditor(QWidget):
         else:
             self.show_empty_state()
             
+        # Emit version_changed signal to notify other components
+        if self.current_task_id:
+            self.version_changed.emit(self.current_task_id, version_id)
+            
     def show_version_editor(self, version_data: Dict[str, Any]):
         """Show the version editor"""
         try:
@@ -802,15 +1164,14 @@ class PromptEditor(QWidget):
     def show_version_selection_state(self):
         """Show version selection state when versions are available"""
         try:
+            # Disable updates to prevent flickering
+            self.prompt_content_widget.setUpdatesEnabled(False)
+            
             # Show the content widget (but with version selection state)
             self.prompt_content_widget.setVisible(True)
             
             # Clear existing content
             self.clear_widget_completely(self.prompt_content_widget)
-            
-            # Wait for deletion to complete
-            from PyQt6.QtWidgets import QApplication, QGridLayout
-            QApplication.processEvents()
                 
             selection_widget = QWidget()
             selection_layout = QVBoxLayout(selection_widget)
@@ -869,11 +1230,19 @@ class PromptEditor(QWidget):
             self._ensure_widget_layout(self.prompt_content_widget)
             self.prompt_content_widget.layout().addWidget(selection_widget)
             
+            # Re-enable updates and show content
+            self.prompt_content_widget.setUpdatesEnabled(True)
+            
             # Disable preview functionality in selection mode
             self._disable_preview_button()
             
         except Exception as e:
             print(f"Error in show_version_selection_state: {e}")
+            # Ensure updates are re-enabled even if error occurs
+            try:
+                self.prompt_content_widget.setUpdatesEnabled(True)
+            except:
+                pass
 
     def create_version_item(self, version: Dict[str, Any]) -> QWidget:
         """Create a version selection item (like variables editor)"""
@@ -1142,11 +1511,10 @@ class PromptEditor(QWidget):
             print(f"Error in show_empty_state: {e}")
         
     def clear_widget_completely(self, widget):
-        """Completely clear a widget of all content"""
+        """Completely clear a widget of all content with minimal flickering"""
         try:
-            # Process any pending events first
-            from PyQt6.QtWidgets import QApplication
-            QApplication.processEvents()
+            # Disable updates to prevent flickering during cleanup
+            widget.setUpdatesEnabled(False)
             
             # Clear layout contents but keep the layout object
             if widget.layout():
@@ -1160,11 +1528,16 @@ class PromptEditor(QWidget):
                     elif child.layout():
                         self._clear_layout_recursive(child.layout())
             
-            # Process deletion events
-            QApplication.processEvents()
+            # Re-enable updates after cleanup is complete
+            widget.setUpdatesEnabled(True)
             
         except Exception as e:
             print(f"Error in clear_widget_completely: {e}")
+            # Ensure updates are re-enabled even if error occurs
+            try:
+                widget.setUpdatesEnabled(True)
+            except:
+                pass
     
     def _ensure_widget_layout(self, widget):
         """Ensure widget has a layout, create if needed"""
@@ -1345,188 +1718,94 @@ class PromptEditor(QWidget):
                 self._clear_layout(child.layout())
         
     def toggle_preview(self):
-        """Toggle preview mode"""
+        """새로운 개선된 Preview 모드 토글"""
         try:
-            # Check if editing widgets are available
-            if not (hasattr(self, 'description_edit') and hasattr(self, 'system_prompt_edit') and hasattr(self, 'main_prompt_edit')):
-                print("Editing widgets not available - cannot toggle preview")
+            # QTextEdit 위젯들이 사용 가능한지 확인
+            if not self.text_edits or not all(self.text_edits.values()):
+                print("QTextEdit widgets not available - cannot toggle preview")
                 return
             
-            # Safely get the preview button - it might have been recreated
+            # Preview 버튼 찾기
             preview_btn = self._find_preview_button_in_header()
             if not preview_btn:
                 print("Preview button not found - cannot toggle preview")
                 return
                 
-            # Update our reference to the current button
-            self.preview_btn = preview_btn
+            # Preview 모드 상태 토글
+            self.is_preview_mode = not self.is_preview_mode
             
-            # Check if we can access the button state safely
-            try:
-                is_preview_mode = self.preview_btn.isChecked()
-            except RuntimeError:
-                # Button was deleted, find it again
-                preview_btn = self._find_preview_button_in_header()
-                if not preview_btn:
-                    print("Preview button was deleted and cannot be found")
-                    return
-                self.preview_btn = preview_btn
-                is_preview_mode = self.preview_btn.isChecked()
-            
-            if is_preview_mode:
-                try:
-                    # Switch to preview mode
-                    self.switch_to_preview_mode()
-                    if hasattr(self, 'preview_btn') and self.preview_btn:
-                        try:
-                            self.preview_btn.setText("✏️ Edit Mode")
-                        except RuntimeError:
-                            print("Could not update preview button text - button was deleted")
-                except Exception as e:
-                    print(f"Error showing preview: {e}")
-                    # Try to reset button state safely
-                    if hasattr(self, 'preview_btn') and self.preview_btn:
-                        try:
-                            self.preview_btn.setChecked(False)
-                        except RuntimeError:
-                            print("Could not reset preview button state - button was deleted")
+            if self.is_preview_mode:
+                # Preview 모드로 전환
+                self.apply_preview_mode()
+                preview_btn.setText("✏️ Edit Mode")
+                print("Switched to Preview mode")
             else:
-                # Switch back to edit mode
-                self.switch_to_edit_mode()
-                # Note: After switch_to_edit_mode, the button will be recreated
-                # So we don't try to update its text here
+                # Edit 모드로 전환
+                self.apply_edit_mode()
+                preview_btn.setText("👁️ Preview")
+                print("Switched to Edit mode")
+                
+            # 버튼 체크 상태 업데이트
+            preview_btn.setChecked(self.is_preview_mode)
                 
         except Exception as e:
             print(f"Error in toggle_preview: {e}")
+            # 오류 발생 시 안전한 상태로 복구
+            self.is_preview_mode = False
+            if preview_btn:
+                try:
+                    preview_btn.setChecked(False)
+                    preview_btn.setText("👁️ Preview")
+                except:
+                    pass
     
-    def switch_to_preview_mode(self):
-        """Switch editing widgets to preview mode"""
+    def apply_preview_mode(self):
+        """Preview 모드 스타일과 내용 적용"""
         try:
-            # Store original content
-            self.original_description = self.description_edit.toPlainText()
-            self.original_system_prompt = self.system_prompt_edit.toPlainText()
-            self.original_main_prompt = self.main_prompt_edit.toPlainText()
-            
-            # Store original stylesheets for restoration
-            self.original_description_style = self.description_edit.styleSheet()
-            self.original_system_style = self.system_prompt_edit.styleSheet()
-            self.original_main_style = self.main_prompt_edit.styleSheet()
-            
-            # Render content with variables
-            rendered_description = self.render_prompt_with_variables(self.original_description)
-            rendered_system = self.render_prompt_with_variables(self.original_system_prompt)
-            rendered_main = self.render_prompt_with_variables(self.original_main_prompt)
-            
-            # Set preview content and make read-only
-            self.description_edit.setPlainText(rendered_description)
-            self.description_edit.setReadOnly(True)
-            self.description_edit.setStyleSheet("""
-                QTextEdit {
-                    background-color: #f8f9fa;
-                    border: 2px solid #007bff;
-                    border-radius: 4px;
-                    font-family: 'Consolas', 'Monaco', monospace;
-                    color: #495057;
+            # 원본 내용 저장 (한 번만)
+            if not self.original_contents:
+                self.original_contents = {
+                    'description': self.text_edits['description'].toPlainText(),
+                    'system': self.text_edits['system'].toPlainText(),
+                    'main': self.text_edits['main'].toPlainText()
                 }
-            """)
             
-            self.system_prompt_edit.setPlainText(rendered_system)
-            self.system_prompt_edit.setReadOnly(True)
-            self.system_prompt_edit.setStyleSheet("""
-                QTextEdit {
-                    background-color: rgba(16, 185, 129, 0.1);
-                    border: 2px solid #10b981;
-                    border-radius: 4px;
-                    font-family: 'Consolas', 'Monaco', monospace;
-                    color: #047857;
-                }
-            """)
-            
-            self.main_prompt_edit.setPlainText(rendered_main)
-            self.main_prompt_edit.setReadOnly(True)
-            self.main_prompt_edit.setStyleSheet("""
-                QTextEdit {
-                    background-color: #fff8e1;
-                    border: 2px solid #ffc107;
-                    border-radius: 4px;
-                    font-family: 'Consolas', 'Monaco', monospace;
-                    color: #856404;
-                }
-            """)
-            
-            print("Switched to preview mode successfully")
+            # 각 QTextEdit에 Preview 모드 적용
+            for edit_type, text_edit in self.text_edits.items():
+                if text_edit and edit_type in self.original_contents:
+                    # 변수가 적용된 내용으로 렌더링
+                    rendered_content = self.render_prompt_with_variables(
+                        self.original_contents[edit_type]
+                    )
+                    
+                    # Preview 스타일과 내용 적용
+                    text_edit.setPlainText(rendered_content)
+                    text_edit.setReadOnly(True)
+                    text_edit.setStyleSheet(self.PREVIEW_MODE_STYLES[edit_type])
+                    
+            print("Preview mode applied successfully")
             
         except Exception as e:
-            print(f"Error switching to preview mode: {e}")
+            print(f"Error applying preview mode: {e}")
     
-    def switch_to_edit_mode(self):
-        """Switch preview widgets back to edit mode"""
+    def apply_edit_mode(self):
+        """Edit 모드 스타일과 내용 복원"""
         try:
-            print("Starting edit mode transition...")
+            # 각 QTextEdit에 Edit 모드 복원
+            for edit_type, text_edit in self.text_edits.items():
+                if text_edit and edit_type in self.original_contents:
+                    # 원본 내용과 스타일 복원
+                    text_edit.setReadOnly(False)
+                    text_edit.setPlainText(self.original_contents[edit_type])
+                    text_edit.setStyleSheet(self.EDIT_MODE_STYLES[edit_type])
             
-            # Store the original content before any changes
-            original_content = {}
-            if hasattr(self, 'original_description'):
-                original_content['description'] = self.original_description
-            if hasattr(self, 'original_system_prompt'):
-                original_content['system_prompt'] = self.original_system_prompt  
-            if hasattr(self, 'original_main_prompt'):
-                original_content['content'] = self.original_main_prompt
+            # 원본 내용 캐시 클리어
+            self.original_contents = {}
             
-            # NUCLEAR OPTION: Force complete UI reconstruction
-            # This is the most reliable way to eliminate all style caching
+            print("Edit mode applied successfully")
             
-            # Step 1: Store current version ID
-            current_version_id = self.current_version_id
-            
-            # Step 2: Temporarily clear version selection to trigger cleanup
-            self.current_version_id = None
-            self.version_timeline.set_current_version(None)
-            
-            # Step 3: Force complete widget cleanup
-            self.clear_widget_completely(self.prompt_content_widget)
-            
-            # Step 4: Process all pending events to ensure cleanup
-            from PyQt6.QtWidgets import QApplication
-            QApplication.processEvents()
-            QApplication.processEvents()  # Double process for safety
-            
-            # Step 5: Wait a moment for Qt to fully clear everything
-            import time
-            time.sleep(0.01)  # 10ms should be enough
-            
-            # Step 6: Restore version selection and recreate everything
-            self.current_version_id = current_version_id
-            self.version_timeline.set_current_version(current_version_id)
-            
-            # Step 7: Find and update version data with original content
-            version_data = None
-            for version in self.versions:
-                if version['id'] == current_version_id:
-                    version_data = version.copy()  # Create a copy
-                    break
-            
-            if version_data and original_content:
-                # Update with original content to preserve user's work
-                version_data.update(original_content)
-                
-            # Step 8: Force complete recreation through select_version
-            # This bypasses all existing widgets and creates everything fresh
-            if version_data:
-                print("Performing nuclear UI reconstruction...")
-                self.show_version_editor(version_data)
-                print("UI reconstruction complete - all widgets recreated from scratch")
-            else:
-                print("Warning: Could not find version data for reconstruction")
-                
         except Exception as e:
-            print(f"Error in nuclear UI reconstruction: {e}")
-            # Ultimate fallback - if all else fails, go back to version selection
-            try:
-                self.go_back_to_version_selection()
-                print("Fallback: returned to version selection")
-            except Exception as e2:
-                print(f"Ultimate fallback also failed: {e2}")
+            print(f"Error applying edit mode: {e}")
     
     def _exit_preview_mode(self):
         """Exit preview mode if currently active"""

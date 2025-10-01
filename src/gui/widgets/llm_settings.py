@@ -73,10 +73,14 @@ class EndpointListItem(QFrame):
         self.endpoint_id = endpoint_data.get('id', '')
         self.is_active = is_active
         self.is_default = is_default
+        self.is_selected = False
         
         self.setFrameStyle(QFrame.Shape.Box)
         self.setLineWidth(1)
         self.setContentsMargins(2, 2, 2, 2)
+        
+        # Prevent focus to avoid blue borders
+        self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         
         self.setup_ui()
         self.update_styles()
@@ -146,23 +150,47 @@ class EndpointListItem(QFrame):
     def update_styles(self):
         """Update item styles based on state"""
         if self.is_active:
+            # Active endpoint - subtle styling with left accent and background
             self.setStyleSheet("""
                 QFrame {
-                    background-color: rgba(0, 123, 255, 0.05);
-                    border: 2px solid #007bff;
+                    background-color: rgba(16, 185, 129, 0.05);
+                    border: 1px solid #dee2e6;
+                    border-left: 3px solid #10b981;
                     border-radius: 6px;
+                    outline: none;
+                }
+                QFrame:hover {
+                    background-color: rgba(16, 185, 129, 0.08);
+                    border: 1px solid #adb5bd;
+                    border-left: 3px solid #10b981;
+                }
+            """)
+        elif self.is_selected:
+            # Selected but not active - very light selection
+            self.setStyleSheet("""
+                QFrame {
+                    background-color: rgba(108, 117, 125, 0.05);
+                    border: 1px solid #adb5bd;
+                    border-radius: 6px;
+                    outline: none;
+                }
+                QFrame:hover {
+                    background-color: rgba(108, 117, 125, 0.08);
+                    border: 1px solid #6c757d;
                 }
             """)
         else:
+            # Default state - clean gray
             self.setStyleSheet("""
                 QFrame {
                     background-color: white;
                     border: 1px solid #dee2e6;
                     border-radius: 6px;
+                    outline: none;
                 }
                 QFrame:hover {
                     background-color: #f8f9fa;
-                    border-color: #007bff;
+                    border: 1px solid #adb5bd;
                 }
             """)
             
@@ -171,6 +199,11 @@ class EndpointListItem(QFrame):
         if event.button() == Qt.MouseButton.LeftButton:
             self.clicked.emit(self.endpoint_id)
         super().mousePressEvent(event)
+        
+    def set_selected(self, selected: bool):
+        """Set the selected state of this item"""
+        self.is_selected = selected
+        self.update_styles()
         
     def contextMenuEvent(self, event):
         """Handle context menu"""
@@ -469,8 +502,12 @@ class LLMSettingsWidget(QWidget):
         self.active_endpoint_id: Optional[str] = None
         self.default_endpoint_id: Optional[str] = None
         self.selected_endpoint_id: Optional[str] = None
+        self.endpoint_items: Dict[str, EndpointListItem] = {}
         
         self.setup_ui()
+        
+        # Load endpoints on initialization
+        self.load_endpoints()
         
     def setup_ui(self):
         """Setup the LLM settings UI"""
@@ -582,11 +619,17 @@ class LLMSettingsWidget(QWidget):
             
     def refresh_endpoint_list(self):
         """Refresh the endpoint list display"""
-        # Clear existing items
+        # Store reference to current endpoint items for selection updates
+        self.endpoint_items = {}
+        
+        # Clear existing items immediately to prevent duplicates
         for i in reversed(range(self.endpoint_list_layout.count() - 1)):  # Keep stretch
             child = self.endpoint_list_layout.itemAt(i)
             if child and child.widget():
-                child.widget().deleteLater()
+                widget = child.widget()
+                self.endpoint_list_layout.removeWidget(widget)
+                widget.setParent(None)
+                widget.deleteLater()
                 
         # Add endpoint items
         if self.endpoints:
@@ -601,6 +644,13 @@ class LLMSettingsWidget(QWidget):
                 item.activate_requested.connect(self.activate_endpoint)
                 item.set_default_requested.connect(self.set_default_endpoint)
                 
+                # Set selection state
+                is_selected = endpoint['id'] == self.selected_endpoint_id
+                item.set_selected(is_selected)
+                
+                # Store reference
+                self.endpoint_items[endpoint['id']] = item
+                
                 self.endpoint_list_layout.insertWidget(
                     self.endpoint_list_layout.count() - 1,
                     item
@@ -614,7 +664,14 @@ class LLMSettingsWidget(QWidget):
             
     def select_endpoint(self, endpoint_id: str):
         """Select an endpoint for viewing"""
+        # Update previous selection
+        if self.selected_endpoint_id and self.selected_endpoint_id in self.endpoint_items:
+            self.endpoint_items[self.selected_endpoint_id].set_selected(False)
+        
+        # Set new selection
         self.selected_endpoint_id = endpoint_id
+        if endpoint_id in self.endpoint_items:
+            self.endpoint_items[endpoint_id].set_selected(True)
         
         # Find endpoint data
         endpoint_data = None
@@ -904,12 +961,10 @@ class LLMSettingsWidget(QWidget):
         try:
             self.db_client.set_active_endpoint(endpoint_id)
             
-            # Update local state
-            self.active_endpoint_id = endpoint_id
+            # Reload data from database to ensure consistency
+            self.load_endpoints()
             
-            # Refresh displays
-            self.refresh_endpoint_list()
-            
+            # Reselect the activated endpoint if it was previously selected
             if self.selected_endpoint_id == endpoint_id:
                 self.select_endpoint(endpoint_id)
                 
@@ -923,12 +978,10 @@ class LLMSettingsWidget(QWidget):
         try:
             self.db_client.set_default_endpoint(endpoint_id)
             
-            # Update local state
-            self.default_endpoint_id = endpoint_id
+            # Reload data from database to ensure consistency
+            self.load_endpoints()
             
-            # Refresh displays
-            self.refresh_endpoint_list()
-            
+            # Reselect the endpoint if it was previously selected
             if self.selected_endpoint_id == endpoint_id:
                 self.select_endpoint(endpoint_id)
                 
@@ -992,7 +1045,10 @@ class LLMSettingsWidget(QWidget):
         for i in reversed(range(self.right_layout.count())):
             child = self.right_layout.itemAt(i)
             if child and child.widget():
-                child.widget().deleteLater()
+                widget = child.widget()
+                self.right_layout.removeWidget(widget)
+                widget.setParent(None)
+                widget.deleteLater()
                 
     def apply_theme(self, is_dark: bool):
         """Apply theme to the widget"""

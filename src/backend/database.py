@@ -441,6 +441,33 @@ class PromptManagerDB:
                 VALUES (?, ?, ?)
             ''', (key, value, datetime.now().isoformat()))
             conn.commit()
+    
+    # === Active Endpoint Management ===
+    def get_active_endpoint_id(self) -> Optional[str]:
+        """현재 활성화된 endpoint ID 조회"""
+        return self.get_setting('active_endpoint_id')
+    
+    def set_active_endpoint_id(self, endpoint_id: str) -> bool:
+        """활성화된 endpoint ID 설정"""
+        try:
+            # endpoint가 실제로 존재하는지 확인
+            endpoint = self.get_llm_endpoint_by_id(endpoint_id)
+            if not endpoint:
+                return False
+            
+            self.set_setting('active_endpoint_id', endpoint_id)
+            return True
+        except Exception:
+            return False
+    
+    def get_default_endpoint_id(self) -> Optional[str]:
+        """기본 endpoint ID 조회 (is_default=True인 것)"""
+        with self.get_connection() as conn:
+            cursor = conn.execute(
+                'SELECT id FROM llm_endpoints WHERE is_default = TRUE LIMIT 1'
+            )
+            row = cursor.fetchone()
+            return row['id'] if row else None
 
     def migrate_from_tinydb(self, json_file_path: str) -> bool:
         """TinyDB JSON 파일에서 SQLite로 마이그레이션"""

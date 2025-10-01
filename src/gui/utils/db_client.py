@@ -253,19 +253,22 @@ class DatabaseClient:
         try:
             endpoints = self.db.get_all_llm_endpoints()
             
-            # Find default endpoint (database.py already formats to camelCase)
-            default_endpoint = None
-            active_endpoint = None
-            for ep in endpoints:
-                if ep.get('isDefault', False):
-                    default_endpoint = ep
-                    active_endpoint = ep  # Use default as active for now
-                    break
+            # Get active endpoint ID from settings
+            active_endpoint_id = self.db.get_active_endpoint_id()
+            
+            # Get default endpoint ID
+            default_endpoint_id = self.db.get_default_endpoint_id()
+            
+            # If no active endpoint is set, use default as fallback
+            if not active_endpoint_id and default_endpoint_id:
+                active_endpoint_id = default_endpoint_id
+                # Set it as active for future use
+                self.db.set_active_endpoint_id(default_endpoint_id)
             
             return {
                 'endpoints': endpoints,  # No need to format again, database already does it
-                'activeEndpointId': active_endpoint['id'] if active_endpoint else None,
-                'defaultEndpointId': default_endpoint['id'] if default_endpoint else None
+                'activeEndpointId': active_endpoint_id,
+                'defaultEndpointId': default_endpoint_id
             }
         except Exception as e:
             print(f"Error getting LLM endpoints: {e}")
@@ -331,8 +334,12 @@ class DatabaseClient:
             return False
             
     def set_active_endpoint(self, endpoint_id: str) -> bool:
-        """Set active LLM endpoint (for now, same as default)"""
-        return self.set_default_endpoint(endpoint_id)
+        """Set active LLM endpoint"""
+        try:
+            return self.db.set_active_endpoint_id(endpoint_id)
+        except Exception as e:
+            print(f"Error setting active endpoint: {e}")
+            return False
             
     def set_default_endpoint(self, endpoint_id: str) -> bool:
         """Set default LLM endpoint"""
@@ -340,7 +347,7 @@ class DatabaseClient:
             # First, unset all other defaults
             endpoints = self.db.get_all_llm_endpoints()
             for ep in endpoints:
-                if ep['id'] != endpoint_id and ep.get('is_default', False):
+                if ep['id'] != endpoint_id and ep.get('isDefault', False):  # Use camelCase key
                     self.db.update_llm_endpoint(ep['id'], is_default=False)
             
             # Set the new default
@@ -351,11 +358,118 @@ class DatabaseClient:
             
     def call_llm(self, task_id: str, version_id: str, input_data: Dict[str, Any],
                 system_prompt: str, endpoint: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
-        """Call LLM API (requires implementing LLM call logic)"""
-        # For now, return a mock response
-        # This would need to be implemented with actual LLM API calls
-        print("LLM call not implemented in direct database mode")
-        return None
+        """Call LLM API with the given prompt and variables"""
+        try:
+            if not endpoint:
+                raise Exception("No LLM endpoint provided")
+                
+            # Get version content for prompt template
+            version = self.db.get_version_by_id(version_id)
+            if not version:
+                raise Exception(f"Version {version_id} not found")
+                
+            user_prompt_template = version.get('content', '')
+            
+            # Render prompt template with variables
+            user_prompt = self._render_prompt_template(user_prompt_template, input_data)
+            system_prompt_rendered = self._render_prompt_template(system_prompt, input_data)
+            
+            # Prepare API request
+            base_url = endpoint.get('baseUrl', '').rstrip('/')
+            api_key = endpoint.get('apiKey', '')
+            model = endpoint.get('defaultModel', 'gpt-3.5-turbo')
+            
+            if not base_url or not api_key:
+                raise Exception("Missing endpoint URL or API key")
+                
+            # Make API call
+            chat_url = f"{base_url}/chat/completions"
+            
+            headers = {
+                'Authorization': f'Bearer {api_key}',
+                'Content-Type': 'application/json'
+            }
+            
+            payload = {
+                'model': model,
+                'messages': [
+                    {
+                        'role': 'system',
+                        'content': system_prompt_rendered
+                    },
+                    {
+                        'role': 'user', 
+                        'content': user_prompt
+                    }
+                ],
+                'temperature': 0.7
+            }
+            
+            response = requests.post(
+                chat_url,
+                headers=headers,
+                json=payload,
+                timeout=120,  # 2 minute timeout
+                verify=True
+            )
+            
+            if response.status_code != 200:
+                raise Exception(f"API call failed: HTTP {response.status_code} - {response.text}")
+                
+            result_data = response.json()
+            
+            # Save result to database
+            timestamp = datetime.now().isoformat()
+            
+            # Format result data for database
+            result_record = {
+                'version_id': version_id,
+                'input_data': json.dumps(input_data),
+                'output': json.dumps(result_data),
+                'timestamp': timestamp,
+                'model': model,
+                'provider': endpoint.get('name', 'Unknown')
+            }
+            
+            # Save to database - create endpoint info
+            endpoint_info = {
+                'name': endpoint.get('name', 'Unknown'),
+                'model': model,
+                'baseUrl': endpoint.get('baseUrl', ''),
+                'provider': endpoint.get('name', 'Unknown')
+            }
+            
+            self.db.add_result(
+                version_id=version_id,
+                input_data=input_data,
+                output=result_data,
+                endpoint_info=endpoint_info
+            )
+            
+            return result_data
+            
+        except requests.exceptions.Timeout:
+            raise Exception("Request timed out after 2 minutes")
+        except requests.exceptions.ConnectionError:
+            raise Exception("Could not connect to LLM endpoint")
+        except requests.exceptions.SSLError:
+            raise Exception("SSL certificate verification failed")
+        except Exception as e:
+            print(f"Error in call_llm: {e}")
+            raise e
+            
+    def _render_prompt_template(self, template: str, variables: Dict[str, Any]) -> str:
+        """Render prompt template with variables"""
+        if not template:
+            return ""
+            
+        result = template
+        for key, value in variables.items():
+            # Replace {{variable}} patterns
+            placeholder = f"{{{{{key}}}}}"
+            result = result.replace(placeholder, str(value))
+            
+        return result
         
     def test_llm_models(self, base_url: str, api_key: str) -> Optional[Dict[str, Any]]:
         """Test LLM models endpoint"""
