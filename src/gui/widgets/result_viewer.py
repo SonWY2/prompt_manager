@@ -7,7 +7,7 @@ from PyQt6.QtWidgets import (
     QTextEdit, QTabWidget, QScrollArea, QFrame, QListWidget,
     QListWidgetItem, QSplitter, QMessageBox, QProgressBar,
     QGroupBox, QFormLayout, QTextBrowser, QComboBox, QSlider,
-    QDoubleSpinBox
+    QDoubleSpinBox, QDialog, QApplication
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QThread, QTimer
 from PyQt6.QtGui import QFont, QPixmap, QIcon
@@ -52,6 +52,296 @@ class LLMCallThread(QThread):
             self.finished.emit(result)
         except Exception as e:
             self.error.emit(str(e))
+
+
+class TranslateThread(QThread):
+    """Thread for translating response content to Korean"""
+    
+    finished = pyqtSignal(str)  # translated text
+    error = pyqtSignal(str)     # error message
+    
+    def __init__(self, db_client: DatabaseClient, content_to_translate: str, endpoint: Optional[Dict[str, Any]]):
+        super().__init__()
+        self.db_client = db_client
+        self.content_to_translate = content_to_translate
+        self.endpoint = endpoint
+        
+    def run(self):
+        """Run the translation call"""
+        try:
+            if not self.endpoint:
+                self.error.emit("No LLM endpoint available for translation")
+                return
+                
+            # Prepare translation prompt
+            system_prompt = "You are a professional translator. Translate the given text to Korean while maintaining the original meaning, tone, and context. Provide only the translated text without any additional comments or explanations."
+            user_prompt = f"아래 내용을 요약이나 생략없이 있는 그대로 `한국어`로만 번역해주세요:\n\n{self.content_to_translate}"
+            
+            # Prepare API request
+            base_url = self.endpoint.get('baseUrl', '').rstrip('/')
+            api_key = self.endpoint.get('apiKey', '')
+            model = self.endpoint.get('defaultModel', 'gpt-3.5-turbo')
+            
+            if not base_url or not api_key:
+                self.error.emit("Missing endpoint URL or API key")
+                return
+                
+            # Make API call
+            import requests
+            chat_url = f"{base_url}/chat/completions"
+            
+            headers = {
+                'Authorization': f'Bearer {api_key}',
+                'Content-Type': 'application/json'
+            }
+            
+            payload = {
+                'model': model,
+                'messages': [
+                    {
+                        'role': 'system',
+                        'content': system_prompt
+                    },
+                    {
+                        'role': 'user', 
+                        'content': user_prompt
+                    }
+                ],
+                'temperature': 0.3  # Lower temperature for consistent translation
+            }
+            
+            response = requests.post(
+                chat_url,
+                headers=headers,
+                json=payload,
+                timeout=60,  # 1 minute timeout
+                verify=True
+            )
+            
+            if response.status_code != 200:
+                self.error.emit(f"Translation API call failed: HTTP {response.status_code} - {response.text}")
+                return
+                
+            result_data = response.json()
+            
+            # Extract translated content
+            if 'choices' in result_data and result_data['choices']:
+                translated_text = result_data['choices'][0].get('message', {}).get('content', '')
+                if translated_text:
+                    self.finished.emit(translated_text)
+                else:
+                    self.error.emit("No translated content received from API")
+            else:
+                self.error.emit("Invalid response format from translation API")
+                
+        except requests.exceptions.Timeout:
+            self.error.emit("Translation request timed out after 1 minute")
+        except requests.exceptions.ConnectionError:
+            self.error.emit("Could not connect to LLM endpoint for translation")
+        except requests.exceptions.SSLError:
+            self.error.emit("SSL certificate verification failed")
+        except Exception as e:
+            self.error.emit(f"Translation error: {str(e)}")
+
+
+class TranslatePopup(QDialog):
+    """Popup dialog for showing translation results"""
+    
+    def __init__(self, original_text: str, parent=None):
+        super().__init__(parent)
+        self.original_text = original_text
+        self.translated_text = ""
+        
+        self.setWindowTitle("한국어 번역")
+        self.setModal(True)
+        self.resize(700, 500)
+        
+        self.setup_ui()
+        
+    def setup_ui(self):
+        """Setup the translation popup UI"""
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(15)
+        
+        # Title
+        title_label = QLabel("AI 응답 번역 결과")
+        title_label.setStyleSheet("""
+            QLabel {
+                font-size: 16px;
+                font-weight: bold;
+                color: #2c3e50;
+                margin-bottom: 10px;
+            }
+        """)
+        layout.addWidget(title_label)
+        
+        # Original text section
+        original_group = QGroupBox("원본 텍스트 (Original)")
+        original_layout = QVBoxLayout(original_group)
+        
+        self.original_text_widget = QTextBrowser()
+        self.original_text_widget.setPlainText(self.original_text)
+        self.original_text_widget.setMaximumHeight(150)
+        self.original_text_widget.setStyleSheet("""
+            QTextBrowser {
+                border: 1px solid #bdc3c7;
+                border-radius: 5px;
+                padding: 10px;
+                background-color: #f8f9fa;
+                font-family: 'Segoe UI', Arial, sans-serif;
+                font-size: 12px;
+                line-height: 1.4;
+            }
+        """)
+        original_layout.addWidget(self.original_text_widget)
+        layout.addWidget(original_group)
+        
+        # Translation result section
+        translation_group = QGroupBox("번역 결과 (Korean Translation)")
+        translation_layout = QVBoxLayout(translation_group)
+        
+        self.translation_text_widget = QTextBrowser()
+        self.translation_text_widget.setPlainText("번역 중...")
+        self.translation_text_widget.setMinimumHeight(200)
+        self.translation_text_widget.setStyleSheet("""
+            QTextBrowser {
+                border: 1px solid #3498db;
+                border-radius: 5px;
+                padding: 15px;
+                background-color: white;
+                font-family: 'Malgun Gothic', 'Microsoft YaHei', 'Segoe UI', Arial, sans-serif;
+                font-size: 14px;
+                line-height: 1.6;
+                color: #2c3e50;
+            }
+        """)
+        translation_layout.addWidget(self.translation_text_widget)
+        layout.addWidget(translation_group)
+        
+        # Progress indicator
+        self.progress_widget = QWidget()
+        progress_layout = QHBoxLayout(self.progress_widget)
+        progress_layout.setContentsMargins(0, 0, 0, 0)
+        
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setRange(0, 0)  # Indeterminate
+        self.progress_bar.setStyleSheet("""
+            QProgressBar {
+                border: 1px solid #bdc3c7;
+                border-radius: 5px;
+                text-align: center;
+                font-size: 11px;
+            }
+            QProgressBar::chunk {
+                background-color: #3498db;
+                border-radius: 3px;
+            }
+        """)
+        progress_layout.addWidget(self.progress_bar)
+        
+        self.status_label = QLabel("번역 중...")
+        self.status_label.setStyleSheet("color: #7f8c8d; font-size: 11px; font-style: italic;")
+        progress_layout.addWidget(self.status_label)
+        
+        layout.addWidget(self.progress_widget)
+        
+        # Buttons
+        button_layout = QHBoxLayout()
+        button_layout.addStretch()
+        
+        # Copy button
+        self.copy_button = QPushButton("📋 번역 결과 복사")
+        self.copy_button.setEnabled(False)
+        self.copy_button.setStyleSheet("""
+            QPushButton {
+                background-color: #27ae60;
+                color: white;
+                border: none;
+                padding: 10px 20px;
+                border-radius: 5px;
+                font-size: 12px;
+                font-weight: 500;
+                min-width: 120px;
+            }
+            QPushButton:hover:enabled {
+                background-color: #229954;
+            }
+            QPushButton:disabled {
+                background-color: #95a5a6;
+            }
+        """)
+        self.copy_button.clicked.connect(self.copy_translation)
+        button_layout.addWidget(self.copy_button)
+        
+        # Close button
+        close_button = QPushButton("닫기")
+        close_button.setStyleSheet("""
+            QPushButton {
+                background-color: #95a5a6;
+                color: white;
+                border: none;
+                padding: 10px 20px;
+                border-radius: 5px;
+                font-size: 12px;
+                font-weight: 500;
+                min-width: 80px;
+            }
+            QPushButton:hover {
+                background-color: #7f8c8d;
+            }
+        """)
+        close_button.clicked.connect(self.close)
+        button_layout.addWidget(close_button)
+        
+        layout.addLayout(button_layout)
+        
+    def show_translation_progress(self):
+        """Show translation in progress"""
+        self.progress_widget.setVisible(True)
+        self.translation_text_widget.setPlainText("번역 중... 잠시만 기다려 주세요.")
+        self.status_label.setText("AI가 텍스트를 번역하고 있습니다...")
+        self.copy_button.setEnabled(False)
+        
+    def show_translation_result(self, translated_text: str):
+        """Show translation result"""
+        self.translated_text = translated_text
+        self.translation_text_widget.setPlainText(translated_text)
+        self.progress_widget.setVisible(False)
+        self.copy_button.setEnabled(True)
+        
+    def show_translation_error(self, error_message: str):
+        """Show translation error"""
+        error_text = f"번역 중 오류가 발생했습니다:\n\n{error_message}\n\n다시 시도하거나 나중에 다시 시도해 주세요."
+        self.translation_text_widget.setPlainText(error_text)
+        self.translation_text_widget.setStyleSheet("""
+            QTextBrowser {
+                border: 1px solid #e74c3c;
+                border-radius: 5px;
+                padding: 15px;
+                background-color: #fdf2f2;
+                font-family: 'Malgun Gothic', 'Microsoft YaHei', 'Segoe UI', Arial, sans-serif;
+                font-size: 14px;
+                line-height: 1.6;
+                color: #c0392b;
+            }
+        """)
+        self.progress_widget.setVisible(False)
+        self.copy_button.setEnabled(False)
+        
+    def copy_translation(self):
+        """Copy translation result to clipboard"""
+        if self.translated_text:
+            try:
+                clipboard = QApplication.clipboard()
+                clipboard.setText(self.translated_text)
+                self.status_label.setText("번역 결과가 클립보드에 복사되었습니다!")
+                
+                # Hide status message after 3 seconds
+                QTimer.singleShot(3000, lambda: self.status_label.setText(""))
+                
+            except Exception as e:
+                self.status_label.setText(f"복사 실패: {str(e)}")
 
 
 class ResultHistoryItem(QFrame):
@@ -1505,7 +1795,7 @@ class ResultViewer(QWidget):
         return widget
 
     def create_action_buttons_widget(self, result_data: Dict[str, Any]) -> QWidget:
-        """3️⃣ 액션 버튼 영역 - Retry 버튼만 전체 너비로"""
+        """3️⃣ 액션 버튼 영역 - Retry & Translate 버튼을 가로로 나란히 배치"""
         from PyQt6.QtWidgets import QSizePolicy
         
         # 버튼 컨테이너
@@ -1521,9 +1811,9 @@ class ResultViewer(QWidget):
 
         button_layout = QHBoxLayout(button_container)
         button_layout.setContentsMargins(15, 10, 15, 10)  # 좌우 여백
-        button_layout.setSpacing(0)
+        button_layout.setSpacing(10)  # 버튼 사이 간격
 
-        # Retry 버튼 - 전체 너비로 확장
+        # Retry 버튼 - 50% 너비
         retry_btn = QPushButton("🔄  Retry")
         retry_btn.setFixedHeight(40)  # 높이는 고정
         retry_btn.setSizePolicy(
@@ -1551,7 +1841,37 @@ class ResultViewer(QWidget):
         
         retry_btn.clicked.connect(self.run_prompt)
 
+        # Translate 버튼 - 50% 너비
+        translate_btn = QPushButton("🌐  Translate")
+        translate_btn.setFixedHeight(40)  # 높이는 고정
+        translate_btn.setSizePolicy(
+            QSizePolicy.Policy.Expanding,  # 가로로 확장
+            QSizePolicy.Policy.Fixed       # 세로는 고정
+        )
+
+        translate_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #4CAF50;
+                color: white;
+                border: none;
+                border-radius: 6px;
+                font-size: 15px;
+                font-weight: 600;
+                padding: 0px;
+            }
+            QPushButton:hover {
+                background-color: #45a049;
+            }
+            QPushButton:pressed {
+                background-color: #3d8b40;
+            }
+        """)
+        
+        translate_btn.clicked.connect(lambda: self.translate_response(result_data))
+
+        # 버튼들을 나란히 배치
         button_layout.addWidget(retry_btn)
+        button_layout.addWidget(translate_btn)
         
         return button_container
 
@@ -1899,6 +2219,71 @@ class ResultViewer(QWidget):
         self.result_detail.show_empty_state()
         self.show_no_task_state()
         
+    def translate_response(self, result_data: Dict[str, Any]):
+        """Translate the response content to Korean"""
+        try:
+            # Check if we have an active endpoint for translation
+            if not self.active_endpoint:
+                QMessageBox.warning(
+                    self, 
+                    "No LLM Provider", 
+                    "번역을 위해서는 활성화된 LLM 공급자가 필요합니다.\n설정에서 LLM 공급자를 설정해 주세요."
+                )
+                return
+                
+            # Extract response content to translate
+            response_content = self._extract_response_content(result_data.get('output', {}))
+            
+            if not response_content or response_content == 'No response content available':
+                QMessageBox.warning(
+                    self, 
+                    "No Content", 
+                    "번역할 내용이 없습니다."
+                )
+                return
+                
+            # Create and show translation popup
+            self.translate_popup = TranslatePopup(response_content, self)
+            self.translate_popup.show_translation_progress()
+            self.translate_popup.show()
+            
+            # Start translation thread
+            self.translate_thread = TranslateThread(
+                self.db_client,
+                response_content,
+                self.active_endpoint
+            )
+            
+            # Connect signals
+            self.translate_thread.finished.connect(self.on_translate_finished)
+            self.translate_thread.error.connect(self.on_translate_error)
+            
+            # Start translation
+            self.translate_thread.start()
+            
+        except Exception as e:
+            QMessageBox.critical(
+                self, 
+                "Translation Error", 
+                f"번역 중 예상치 못한 오류가 발생했습니다:\n{str(e)}"
+            )
+            
+    def on_translate_finished(self, translated_text: str):
+        """Handle translation completion"""
+        try:
+            if hasattr(self, 'translate_popup') and self.translate_popup:
+                self.translate_popup.show_translation_result(translated_text)
+        except Exception as e:
+            print(f"Error handling translation completion: {e}")
+            
+    def on_translate_error(self, error_message: str):
+        """Handle translation error"""
+        try:
+            if hasattr(self, 'translate_popup') and self.translate_popup:
+                self.translate_popup.show_translation_error(error_message)
+        except Exception as e:
+            print(f"Error handling translation error: {e}")
+            
     def _extract_response_content(self, output: Any) -> str:
         """Extract response content from output"""
         if isinstance(output, dict):
