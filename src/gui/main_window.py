@@ -276,6 +276,7 @@ class MainWindow(QMainWindow):
         
         # Prompt editor connections
         self.prompt_editor.version_changed.connect(self.on_version_changed)
+        self.prompt_editor.task_name_updated.connect(self.on_task_name_updated)
         
         # Tab change connections
         self.main_tabs.currentChanged.connect(self.on_tab_changed)
@@ -372,6 +373,20 @@ class MainWindow(QMainWindow):
         tab_names = ["Welcome", "Editor", "LLM Provider"]
         if 0 <= index < len(tab_names):
             self.status_bar.showMessage(f"Switched to {tab_names[index]}", 2000)
+    
+    def on_task_name_updated(self, task_id: str, new_name: str):
+        """Handle task name update from prompt editor"""
+        try:
+            # Update the task navigator sidebar
+            self.task_navigator.update_task_name(task_id, new_name)
+            
+            # Update status bar to show the updated name
+            self.status_bar.showMessage(f"Task renamed to: {new_name}", 3000)
+            
+            print(f"MainWindow: Task {task_id} name updated to: {new_name}")
+            
+        except Exception as e:
+            print(f"Error handling task name update: {e}")
             
         
     def show_about(self):

@@ -145,16 +145,10 @@ class DatabaseClient:
     def update_task(self, task_id: str, updates: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Update a task"""
         try:
-            # Handle favorite status
-            if 'isFavorite' in updates:
-                success = self.db.update_task(task_id, is_favorite=updates['isFavorite'])
-                if not success:
-                    return None
-                    
-            # Handle other updates
-            if 'name' in updates:
-                # Task name updates would need to be added to database.py
-                pass
+            # Use database's update_task method which supports all fields including name
+            success = self.db.update_task(task_id, **updates)
+            if not success:
+                return None
                 
             task = self.db.get_task_by_id(task_id)
             return self._format_task(task) if task else None

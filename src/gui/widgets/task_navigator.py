@@ -490,6 +490,25 @@ class TaskNavigator(QWidget):
         """Get task name by ID"""
         return self.tasks.get(task_id, {}).get('name')
         
+    def update_task_name(self, task_id: str, new_name: str):
+        """Update a specific task's name and refresh display"""
+        if task_id in self.tasks:
+            # Update local task data
+            self.tasks[task_id]['name'] = new_name
+            
+            # Refresh the task list to show updated name
+            self.refresh_task_list()
+            
+            print(f"Task navigator updated task {task_id} name to: {new_name}")
+        else:
+            print(f"Task {task_id} not found in task navigator")
+    
+    def refresh_specific_task(self, task_id: str):
+        """Refresh a specific task's display without full reload"""
+        # For now, just refresh the entire list since it's efficient enough
+        # In the future, this could be optimized to update only the specific task item
+        self.refresh_task_list()
+        
     def apply_theme(self, is_dark: bool):
         """Apply theme to the widget"""
         if is_dark:

@@ -674,6 +674,7 @@ class PromptEditor(QWidget):
     # Signals
     version_changed = pyqtSignal(str, str)  # task_id, version_id
     content_changed = pyqtSignal()
+    task_name_updated = pyqtSignal(str, str)  # task_id, new_name
     
     # 스타일 상수 정의
     EDIT_MODE_STYLES = {
@@ -1265,6 +1266,9 @@ class PromptEditor(QWidget):
         new_name = self.task_title_edit.text().strip()
         current_name = self.task_data.get('name', '')
         
+        # Clear focus to unfocus the field when Enter is pressed
+        self.task_title_edit.clearFocus()
+        
         if new_name and new_name != current_name:
             try:
                 # Update task name in database
@@ -1274,6 +1278,9 @@ class PromptEditor(QWidget):
                     # Update local task data
                     self.task_data['name'] = new_name
                     print(f"Task name updated to: {new_name}")
+                    
+                    # Emit signal to notify other components (like task navigator)
+                    self.task_name_updated.emit(self.current_task_id, new_name)
                 else:
                     # Revert to original name if update failed
                     self.task_title_edit.setText(current_name)
@@ -1518,7 +1525,7 @@ class PromptEditor(QWidget):
         version_checkbox.setTristate(False)  # Disable tristate
         
         # Debug: Log checkbox creation
-        print(f"🏗️ Created checkbox for {version_id}: initial_state={version_checkbox.isChecked()}")
+        # print(f"🏗️ Created checkbox for {version_id}: initial_state={version_checkbox.isChecked()}")
         
         # Use toggled signal instead of stateChanged for better reliability
         version_checkbox.toggled.connect(
