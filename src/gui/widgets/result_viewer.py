@@ -1447,10 +1447,21 @@ class ResultViewer(QWidget):
         self.run_button.clicked.connect(self.run_prompt)
         layout.addWidget(self.run_button)
         
-        # Progress bar (hidden by default)
+        # Progress bar (hidden by default) - 높이 0으로 시작하여 레이아웃 영향 제거
         self.progress_bar = QProgressBar()
+        self.progress_bar.setFixedHeight(0)  # 초기 높이 0
         self.progress_bar.setVisible(False)
         self.progress_bar.setRange(0, 0)  # Indeterminate
+        self.progress_bar.setStyleSheet("""
+            QProgressBar {
+                border: 1px solid #007bff;
+                border-radius: 3px;
+                text-align: center;
+            }
+            QProgressBar::chunk {
+                background-color: #007bff;
+            }
+        """)
         layout.addWidget(self.progress_bar)
         
         # Result display area
@@ -1776,8 +1787,9 @@ class ResultViewer(QWidget):
             for var in set(matches):
                 variables[var] = f"[{var}]"
                 
-        # Show loading state
+        # Show loading state - 높이를 명시적으로 설정
         self.run_button.setEnabled(False)
+        self.progress_bar.setFixedHeight(4)  # 보일 때 높이 설정
         self.progress_bar.setVisible(True)
         self.status_label.setText("Running...")
         
@@ -1800,9 +1812,10 @@ class ResultViewer(QWidget):
         
     def on_llm_finished(self, result: Dict[str, Any]):
         """Handle LLM call completion"""
-        # Hide loading state
+        # Hide loading state - 높이를 0으로 설정
         self.run_button.setEnabled(True)
         self.progress_bar.setVisible(False)
+        self.progress_bar.setFixedHeight(0)  # 숨길 때 높이 0
         self.status_label.setText(f"Completed at {datetime.now().strftime('%H:%M:%S')}")
         
         # Reload version data from DB to get the newly saved result with templates
@@ -1815,9 +1828,10 @@ class ResultViewer(QWidget):
         
     def on_llm_error(self, error: str):
         """Handle LLM call error"""
-        # Hide loading state
+        # Hide loading state - 높이를 0으로 설정
         self.run_button.setEnabled(True)
         self.progress_bar.setVisible(False)
+        self.progress_bar.setFixedHeight(0)  # 숨길 때 높이 0
         self.status_label.setText("Error")
         
         QMessageBox.critical(self, "LLM Error", f"Failed to call LLM: {error}")
@@ -1827,40 +1841,63 @@ class ResultViewer(QWidget):
         # Switch to response tab
         self.tab_widget.setCurrentIndex(0)
         
-        # Clear existing result display
-        for i in reversed(range(self.result_display.layout().count())):
-            child = self.result_display.layout().itemAt(i)
-            if child and child.widget() and child.widget() != self.run_button and child.widget() != self.progress_bar:
-                child.widget().deleteLater()
+        # 핵심 수정: 레이아웃 업데이트를 일시 차단하고 완전히 정리 후 재구축
+        # 레이아웃 업데이트 차단
+        self.result_display.setUpdatesEnabled(False)
         
-        # Create main result container - 간격 0으로 겹침 방지
-        result_container = QWidget()
-        container_layout = QVBoxLayout(result_container)
-        container_layout.setContentsMargins(0, 0, 0, 0)  # 외부 여백 제거
-        container_layout.setSpacing(0)  # 위젯 간 간격 제거로 겹침 방지
-        
-        # 1. 메타 정보 영역 (고정 높이)
-        meta_widget = self.create_meta_info_widget(result_data)
-        container_layout.addWidget(meta_widget, 0)  # 고정 크기
-        
-        # 2. 메인 콘텐츠 영역 (최대 공간 사용)  
-        main_response_widget = self.create_main_response_widget(result_data)
-        container_layout.addWidget(main_response_widget, 1)  # 모든 남은 공간 사용
-        
-        # 3. 액션 버튼 영역 (고정 높이)
-        action_buttons_widget = self.create_action_buttons_widget(result_data)
-        container_layout.addWidget(action_buttons_widget, 0)  # 고정 크기
-        
-        # 4. 상세 정보 영역 (고정 높이)
-        detail_info_widget = self.create_detail_info_widget(result_data)
-        container_layout.addWidget(detail_info_widget, 0)  # 고정 크기
-        
-        # 5. 상태바 (고정 높이)
-        status_bar_widget = self.create_status_bar_widget(result_data)
-        container_layout.addWidget(status_bar_widget, 0)  # 고정 크기
-        
-        # Add to display
-        self.result_display.layout().addWidget(result_container)
+        try:
+            # 기존 컨테이너를 완전히 제거
+            if self.result_display.layout():
+                layout = self.result_display.layout()
+                # 모든 아이템을 즉시 제거
+                while layout.count():
+                    item = layout.takeAt(0)
+                    if item and item.widget():
+                        widget = item.widget()
+                        # run_button과 progress_bar는 유지
+                        if widget not in [self.run_button, self.progress_bar]:
+                            widget.hide()
+                            widget.setParent(None)
+                            widget.deleteLater()
+            
+            # 레이아웃 강제 처리 - 삭제 완료 보장
+            self.result_display.layout().update()
+            QApplication.processEvents()
+            
+            # Create main result container - 간격 0으로 겹침 방지
+            result_container = QWidget()
+            container_layout = QVBoxLayout(result_container)
+            container_layout.setContentsMargins(0, 0, 0, 0)  # 외부 여백 제거
+            container_layout.setSpacing(0)  # 위젯 간 간격 제거로 겹침 방지
+            
+            # 1. 메타 정보 영역 (고정 높이)
+            meta_widget = self.create_meta_info_widget(result_data)
+            container_layout.addWidget(meta_widget, 0)  # 고정 크기
+            
+            # 2. 메인 콘텐츠 영역 (최대 공간 사용)  
+            main_response_widget = self.create_main_response_widget(result_data)
+            container_layout.addWidget(main_response_widget, 1)  # 모든 남은 공간 사용
+            
+            # 3. 액션 버튼 영역 (고정 높이)
+            action_buttons_widget = self.create_action_buttons_widget(result_data)
+            container_layout.addWidget(action_buttons_widget, 0)  # 고정 크기
+            
+            # 4. 상세 정보 영역 (고정 높이)
+            detail_info_widget = self.create_detail_info_widget(result_data)
+            container_layout.addWidget(detail_info_widget, 0)  # 고정 크기
+            
+            # 5. 상태바 (고정 높이)
+            status_bar_widget = self.create_status_bar_widget(result_data)
+            container_layout.addWidget(status_bar_widget, 0)  # 고정 크기
+            
+            # Add to display
+            self.result_display.layout().addWidget(result_container)
+            
+        finally:
+            # 레이아웃 업데이트 재개
+            self.result_display.setUpdatesEnabled(True)
+            # 강제 리프레시
+            self.result_display.update()
         
     def create_summary_card(self, result_data: Dict[str, Any]) -> QWidget:
         """Create simple summary info"""
@@ -2076,9 +2113,8 @@ class ResultViewer(QWidget):
             }
         """)
         
-        # 높이를 동적으로 설정하지만 최소/최대값 지정
-        response_text.setMinimumHeight(200)
-        # 높이 제한 없음 - 스크롤로 처리
+        # 최소 높이 제거 - stretch factor로만 크기 관리하여 일관성 유지
+        # 높이는 전적으로 부모 레이아웃의 stretch factor에 의존
         
         layout.addWidget(response_text, 1)  # stretch factor로 최대 공간 사용
         
