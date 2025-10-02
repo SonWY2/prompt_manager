@@ -5,10 +5,10 @@ Task Navigator Widget - PyQt GUI equivalent of TaskNavigator.jsx
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, 
     QListWidget, QListWidgetItem, QTabWidget, QInputDialog,
-    QMessageBox, QFrame, QSizePolicy, QScrollArea
+    QMessageBox, QFrame, QSizePolicy, QScrollArea, QMenu
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QTimer
-from PyQt6.QtGui import QFont, QIcon
+from PyQt6.QtGui import QFont, QIcon, QAction
 from typing import Dict, List, Optional, Any
 import requests
 from datetime import datetime, timedelta
@@ -21,6 +21,9 @@ class TaskItem(QFrame):
     
     clicked = pyqtSignal(str)  # task_id
     favorite_toggled = pyqtSignal(str, bool)  # task_id, is_favorite
+    rename_requested = pyqtSignal(str)  # task_id
+    duplicate_requested = pyqtSignal(str)  # task_id
+    delete_requested = pyqtSignal(str)  # task_id
     
     def __init__(self, task_data: Dict[str, Any]):
         super().__init__()
@@ -150,6 +153,38 @@ class TaskItem(QFrame):
         if event.button() == Qt.MouseButton.LeftButton:
             self.clicked.emit(self.task_id)
         super().mousePressEvent(event)
+        
+    def contextMenuEvent(self, event):
+        """Handle right-click context menu"""
+        menu = QMenu(self)
+        
+        # Rename action
+        rename_action = QAction("📝 Rename", self)
+        rename_action.triggered.connect(lambda: self.rename_requested.emit(self.task_id))
+        menu.addAction(rename_action)
+        
+        # Duplicate action
+        duplicate_action = QAction("📋 Duplicate", self)
+        duplicate_action.triggered.connect(lambda: self.duplicate_requested.emit(self.task_id))
+        menu.addAction(duplicate_action)
+        
+        # Toggle Favorite action
+        is_favorite = self.task_data.get('isFavorite', False)
+        favorite_text = "☆ Remove from Favorites" if is_favorite else "★ Add to Favorites"
+        favorite_action = QAction(favorite_text, self)
+        favorite_action.triggered.connect(self.toggle_favorite)
+        menu.addAction(favorite_action)
+        
+        # Separator
+        menu.addSeparator()
+        
+        # Delete action
+        delete_action = QAction("🗑️ Delete", self)
+        delete_action.triggered.connect(lambda: self.delete_requested.emit(self.task_id))
+        menu.addAction(delete_action)
+        
+        # Show menu at cursor position
+        menu.exec(event.globalPos())
 
 
 class TaskNavigator(QWidget):
@@ -320,11 +355,13 @@ class TaskNavigator(QWidget):
             
     def refresh_task_list(self):
         """Refresh the task list display"""
-        # Clear existing items
-        for i in reversed(range(self.task_list_layout.count() - 1)):  # Keep stretch
-            child = self.task_list_layout.itemAt(i)
-            if child and child.widget():
-                child.widget().deleteLater()
+        # Clear existing items - process deletions immediately to prevent duplicates
+        while self.task_list_layout.count() > 1:  # Keep stretch at the end
+            item = self.task_list_layout.takeAt(0)
+            if item and item.widget():
+                widget = item.widget()
+                widget.setParent(None)
+                widget.deleteLater()
                 
         # Get filtered tasks
         filtered_tasks = self._get_filtered_tasks()
@@ -339,6 +376,9 @@ class TaskNavigator(QWidget):
             task_item = TaskItem(task)
             task_item.clicked.connect(self.on_task_clicked)
             task_item.favorite_toggled.connect(self.on_favorite_toggled)
+            task_item.rename_requested.connect(self.on_rename_requested)
+            task_item.duplicate_requested.connect(self.on_duplicate_requested)
+            task_item.delete_requested.connect(self.on_delete_requested)
             
             # Set selection state
             if self.current_task_id == task['id']:
@@ -456,8 +496,107 @@ class TaskNavigator(QWidget):
         """Delete the currently selected task"""
         if not self.current_task_id:
             return
+        self.on_delete_requested(self.current_task_id)
+        
+    def on_rename_requested(self, task_id: str):
+        """Handle task rename request from context menu"""
+        if task_id not in self.tasks:
+            return
             
-        task_name = self.tasks.get(self.current_task_id, {}).get('name', 'Unknown Task')
+        current_name = self.tasks[task_id].get('name', '')
+        
+        new_name, ok = QInputDialog.getText(
+            self,
+            "Rename Task",
+            "Enter new task name:",
+            text=current_name
+        )
+        
+        if ok and new_name.strip() and new_name.strip() != current_name:
+            try:
+                # Update in database
+                self.db_client.update_task(task_id, {'name': new_name.strip()})
+                
+                # Update local state
+                self.tasks[task_id]['name'] = new_name.strip()
+                
+                # Refresh list
+                self.refresh_task_list()
+                
+                QMessageBox.information(self, "Success", f"Task renamed to '{new_name.strip()}'")
+                
+            except Exception as e:
+                QMessageBox.critical(self, "Rename Error", f"Failed to rename task: {str(e)}")
+                
+    def on_duplicate_requested(self, task_id: str):
+        """Handle task duplication request from context menu"""
+        if task_id not in self.tasks:
+            return
+            
+        original_task = self.tasks[task_id]
+        original_name = original_task.get('name', 'Untitled Task')
+        
+        # Ask for new task name
+        new_name, ok = QInputDialog.getText(
+            self,
+            "Duplicate Task",
+            "Enter name for duplicated task:",
+            text=f"{original_name} (Copy)"
+        )
+        
+        if ok and new_name.strip():
+            try:
+                # Create new task with same data
+                new_task_id = f'task-{int(datetime.now().timestamp() * 1000)}'
+                response = self.db_client.create_task(new_task_id, new_name.strip())
+                
+                if response:
+                    # Copy variables if any
+                    if 'variables' in original_task:
+                        self.db_client.update_variables(new_task_id, original_task['variables'])
+                    
+                    # Copy favorite status
+                    if original_task.get('isFavorite', False):
+                        self.db_client.update_task(new_task_id, {'isFavorite': True})
+                    
+                    # Copy all versions
+                    versions = original_task.get('versions', [])
+                    for version in versions:
+                        version_data = {
+                            'versionId': f'v{int(datetime.now().timestamp() * 1000)}',
+                            'name': version.get('name', ''),
+                            'content': version.get('content', ''),
+                            'system_prompt': version.get('system_prompt', 'You are a helpful AI Assistant'),
+                            'description': version.get('description', '')
+                        }
+                        self.db_client.create_version(new_task_id, version_data)
+                    
+                    # Reload tasks to get the new task with all its data
+                    self.load_tasks()
+                    
+                    # Select the duplicated task without triggering another refresh
+                    # (load_tasks already called refresh_task_list)
+                    self.current_task_id = new_task_id
+                    self.delete_task_btn.setEnabled(True)
+                    
+                    # Emit signal
+                    self.task_selected.emit(new_task_id)
+                    
+                    QMessageBox.information(
+                        self, 
+                        "Success", 
+                        f"Task duplicated successfully!\nNew task: '{new_name.strip()}'"
+                    )
+                    
+            except Exception as e:
+                QMessageBox.critical(self, "Duplication Error", f"Failed to duplicate task: {str(e)}")
+                
+    def on_delete_requested(self, task_id: str):
+        """Handle task deletion request from context menu or button"""
+        if task_id not in self.tasks:
+            return
+            
+        task_name = self.tasks[task_id].get('name', 'Unknown Task')
         
         reply = QMessageBox.question(
             self,
@@ -469,15 +608,18 @@ class TaskNavigator(QWidget):
         
         if reply == QMessageBox.StandardButton.Yes:
             try:
-                self.db_client.delete_task(self.current_task_id)
+                self.db_client.delete_task(task_id)
                 
                 # Remove from local state
-                deleted_task_id = self.current_task_id
-                del self.tasks[self.current_task_id]
-                self.current_task_id = None
+                deleted_task_id = task_id
+                del self.tasks[task_id]
+                
+                # Clear selection if deleted task was selected
+                if self.current_task_id == task_id:
+                    self.current_task_id = None
+                    self.delete_task_btn.setEnabled(False)
                 
                 # Update UI
-                self.delete_task_btn.setEnabled(False)
                 self.refresh_task_list()
                 
                 # Emit signal
