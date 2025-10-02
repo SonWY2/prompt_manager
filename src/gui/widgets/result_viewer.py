@@ -348,6 +348,7 @@ class ResultHistoryItem(QFrame):
     """Custom history item widget"""
     
     clicked = pyqtSignal(dict)  # result data
+    double_clicked = pyqtSignal(dict)  # result data for double click
     delete_requested = pyqtSignal(str)  # timestamp
     
     def __init__(self, result_data: Dict[str, Any], index: int):
@@ -553,6 +554,296 @@ class ResultHistoryItem(QFrame):
         if event.button() == Qt.MouseButton.LeftButton:
             self.clicked.emit(self.result_data)
         super().mousePressEvent(event)
+    
+    def mouseDoubleClickEvent(self, event):
+        """Handle mouse double click events"""
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.double_clicked.emit(self.result_data)
+        super().mouseDoubleClickEvent(event)
+
+
+class ResultDetailDialog(QDialog):
+    """Popup dialog for showing detailed result information"""
+    
+    def __init__(self, result_data: Dict[str, Any], version_data: Optional[Dict[str, Any]] = None, parent=None):
+        super().__init__(parent)
+        self.result_data = result_data
+        self.version_data = version_data
+        
+        self.setWindowTitle("Result Details")
+        self.setModal(True)
+        self.resize(900, 700)
+        
+        self.setup_ui()
+        
+    def setup_ui(self):
+        """Setup the dialog UI"""
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(15)
+        
+        # Title with timestamp
+        title_layout = QHBoxLayout()
+        title_label = QLabel("📊 Result Details")
+        title_label.setStyleSheet("font-size: 18px; font-weight: bold; color: #2c3e50;")
+        title_layout.addWidget(title_label)
+        
+        title_layout.addStretch()
+        
+        # Timestamp
+        timestamp = self.result_data.get('timestamp', '')
+        if timestamp:
+            try:
+                dt = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+                time_str = dt.strftime('%Y-%m-%d %H:%M:%S')
+            except:
+                time_str = timestamp
+        else:
+            time_str = 'Unknown'
+        time_label = QLabel(time_str)
+        time_label.setStyleSheet("color: #7f8c8d; font-size: 12px;")
+        title_layout.addWidget(time_label)
+        
+        layout.addLayout(title_layout)
+        
+        # Tab widget for organized content
+        tab_widget = QTabWidget()
+        
+        # Request tab
+        tab_widget.addTab(self.create_request_tab(), "📝 Request")
+        
+        # Response tab
+        tab_widget.addTab(self.create_response_tab(), "💬 Response")
+        
+        # Details tab
+        tab_widget.addTab(self.create_details_tab(), "📈 Details")
+        
+        layout.addWidget(tab_widget, 1)
+        
+        # Buttons
+        button_layout = QHBoxLayout()
+        button_layout.addStretch()
+        
+        close_button = QPushButton("Close")
+        close_button.setStyleSheet("""
+            QPushButton {
+                background-color: #95a5a6;
+                color: white;
+                border: none;
+                padding: 10px 24px;
+                border-radius: 5px;
+                font-size: 13px;
+                font-weight: 500;
+                min-width: 100px;
+            }
+            QPushButton:hover {
+                background-color: #7f8c8d;
+            }
+        """)
+        close_button.clicked.connect(self.close)
+        button_layout.addWidget(close_button)
+        
+        layout.addLayout(button_layout)
+        
+    def create_request_tab(self) -> QWidget:
+        """Create request information tab"""
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+        layout.setContentsMargins(10, 10, 10, 10)
+        
+        # System Prompt
+        system_group = QGroupBox("System Prompt")
+        system_layout = QVBoxLayout(system_group)
+        
+        stored_system = self.result_data.get('systemPromptTemplate')
+        if stored_system:
+            system_text = stored_system
+        else:
+            system_text = self.version_data.get('system_prompt', 'N/A') if self.version_data else 'N/A'
+        
+        system_browser = QTextBrowser()
+        system_browser.setPlainText(system_text)
+        system_browser.setStyleSheet("""
+            QTextBrowser {
+                border: 1px solid #d0d0d0;
+                border-radius: 4px;
+                padding: 10px;
+                background-color: #f9f9f9;
+                font-family: 'Consolas', 'Monaco', monospace;
+                font-size: 12px;
+            }
+        """)
+        system_layout.addWidget(system_browser)
+        layout.addWidget(system_group)
+        
+        # User Prompt
+        user_group = QGroupBox("User Prompt")
+        user_layout = QVBoxLayout(user_group)
+        
+        stored_user = self.result_data.get('userPromptTemplate')
+        if stored_user:
+            user_text = stored_user
+        else:
+            content = self.version_data.get('content', '') if self.version_data else ''
+            input_data = self.result_data.get('inputData', {})
+            user_text = self._render_prompt(content, input_data)
+        
+        user_browser = QTextBrowser()
+        user_browser.setPlainText(user_text)
+        user_browser.setStyleSheet("""
+            QTextBrowser {
+                border: 1px solid #d0d0d0;
+                border-radius: 4px;
+                padding: 10px;
+                background-color: #f9f9f9;
+                font-family: 'Consolas', 'Monaco', monospace;
+                font-size: 12px;
+            }
+        """)
+        user_layout.addWidget(user_browser)
+        layout.addWidget(user_group)
+        
+        return widget
+        
+    def create_response_tab(self) -> QWidget:
+        """Create response information tab"""
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+        layout.setContentsMargins(10, 10, 10, 10)
+        
+        # Response content
+        response_group = QGroupBox("AI Response")
+        response_layout = QVBoxLayout(response_group)
+        
+        # Copy button in header
+        header_layout = QHBoxLayout()
+        header_layout.addStretch()
+        
+        copy_button = QPushButton("📋 Copy Response")
+        copy_button.setStyleSheet("""
+            QPushButton {
+                background-color: #3498db;
+                color: white;
+                border: none;
+                padding: 6px 12px;
+                border-radius: 4px;
+                font-size: 11px;
+            }
+            QPushButton:hover {
+                background-color: #2980b9;
+            }
+        """)
+        copy_button.clicked.connect(self.copy_response)
+        header_layout.addWidget(copy_button)
+        response_layout.addLayout(header_layout)
+        
+        # Response text
+        response_content = self._extract_response_content(self.result_data.get('output', {}))
+        response_browser = QTextBrowser()
+        response_browser.setPlainText(response_content)
+        response_browser.setStyleSheet("""
+            QTextBrowser {
+                border: 1px solid #d0d0d0;
+                border-radius: 4px;
+                padding: 15px;
+                background-color: white;
+                font-family: 'Segoe UI', Arial, sans-serif;
+                font-size: 13px;
+                line-height: 1.6;
+            }
+        """)
+        response_layout.addWidget(response_browser)
+        layout.addWidget(response_group)
+        
+        return widget
+        
+    def create_details_tab(self) -> QWidget:
+        """Create details information tab"""
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+        layout.setContentsMargins(10, 10, 10, 10)
+        
+        # Metrics
+        metrics_group = QGroupBox("Metrics")
+        metrics_layout = QFormLayout(metrics_group)
+        
+        endpoint = self.result_data.get('endpoint', {})
+        model = endpoint.get('defaultModel') or endpoint.get('name', 'Unknown')
+        temperature = self.result_data.get('temperature', 0.7)
+        
+        metrics_layout.addRow("Model:", QLabel(model))
+        metrics_layout.addRow("Temperature:", QLabel(f"{temperature:.1f}"))
+        
+        # Calculate tokens
+        input_data = self.result_data.get('inputData', {})
+        output = self.result_data.get('output', {})
+        if isinstance(output, dict) and 'usage' in output:
+            usage = output['usage']
+            metrics_layout.addRow("Input Tokens:", QLabel(f"{usage.get('prompt_tokens', 'N/A'):,}"))
+            metrics_layout.addRow("Output Tokens:", QLabel(f"{usage.get('completion_tokens', 'N/A'):,}"))
+            metrics_layout.addRow("Total Tokens:", QLabel(f"{usage.get('total_tokens', 'N/A'):,}"))
+        
+        layout.addWidget(metrics_group)
+        
+        # Variables
+        if input_data:
+            variables_group = QGroupBox("Input Variables")
+            variables_layout = QVBoxLayout(variables_group)
+            
+            variables_browser = QTextBrowser()
+            variables_browser.setPlainText(json.dumps(input_data, indent=2, ensure_ascii=False))
+            variables_browser.setMaximumHeight(200)
+            variables_browser.setStyleSheet("""
+                QTextBrowser {
+                    border: 1px solid #d0d0d0;
+                    border-radius: 4px;
+                    padding: 10px;
+                    background-color: #f9f9f9;
+                    font-family: 'Consolas', 'Monaco', monospace;
+                    font-size: 11px;
+                }
+            """)
+            variables_layout.addWidget(variables_browser)
+            layout.addWidget(variables_group)
+        
+        layout.addStretch()
+        
+        return widget
+        
+    def _render_prompt(self, template: str, variables: Dict[str, Any]) -> str:
+        """Render prompt template with variables"""
+        result = template
+        for key, value in variables.items():
+            placeholder = f"{{{{{key}}}}}"
+            result = result.replace(placeholder, str(value))
+        return result
+        
+    def _extract_response_content(self, output: Any) -> str:
+        """Extract response content from output"""
+        if isinstance(output, dict):
+            if 'choices' in output and output['choices']:
+                return output['choices'][0].get('message', {}).get('content', 'No content')
+            elif 'content' in output:
+                return output['content']
+        elif isinstance(output, str):
+            return output
+        return 'No content available'
+        
+    def copy_response(self):
+        """Copy response content to clipboard"""
+        try:
+            content = self._extract_response_content(self.result_data.get('output', {}))
+            clipboard = QApplication.clipboard()
+            clipboard.setText(content)
+            
+            # Show temporary feedback
+            sender = self.sender()
+            if sender:
+                original_text = sender.text()
+                sender.setText("✓ Copied!")
+                QTimer.singleShot(2000, lambda: sender.setText(original_text))
+        except Exception as e:
+            QMessageBox.warning(self, "Copy Error", f"Failed to copy: {str(e)}")
 
 
 class ResultDetail(QWidget):
@@ -1434,6 +1725,7 @@ class ResultViewer(QWidget):
 
                 # 시그널에서 emit된 데이터를 직접 받아서 처리
                 history_item.clicked.connect(self.on_history_item_clicked)
+                history_item.double_clicked.connect(self.on_history_item_double_clicked)
                 history_item.delete_requested.connect(self.delete_history_item)
 
                 self.history_list_layout.insertWidget(
@@ -1451,6 +1743,11 @@ class ResultViewer(QWidget):
         """Handle history item click - receives data directly from signal"""
         # Pass the result data to the detail view
         self.result_detail.show_result(result_data, self.version_data)
+    
+    def on_history_item_double_clicked(self, result_data: Dict[str, Any]):
+        """Handle history item double click - show detailed popup"""
+        dialog = ResultDetailDialog(result_data, self.version_data, self)
+        dialog.exec()
             
     def run_prompt(self):
         """Run the current prompt"""
