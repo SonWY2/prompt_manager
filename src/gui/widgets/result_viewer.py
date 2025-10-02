@@ -565,10 +565,30 @@ class ResultHistoryItem(QFrame):
 class ResultDetailDialog(QDialog):
     """Popup dialog for showing detailed result information"""
     
-    def __init__(self, result_data: Dict[str, Any], version_data: Optional[Dict[str, Any]] = None, parent=None):
+    def __init__(self, result_data: Dict[str, Any], version_data: Optional[Dict[str, Any]] = None, 
+                 db_client: Optional[DatabaseClient] = None, active_endpoint: Optional[Dict[str, Any]] = None, 
+                 parent=None):
         super().__init__(parent)
         self.result_data = result_data
         self.version_data = version_data
+        self.db_client = db_client
+        self.active_endpoint = active_endpoint
+        
+        # Translation state tracking
+        self.system_prompt_translated = False
+        self.system_prompt_translation = ""
+        self.user_prompt_translated = False
+        self.user_prompt_translation = ""
+        self.response_translated = False
+        self.response_translation = ""
+        
+        # UI references for translation
+        self.system_prompt_browser = None
+        self.system_translate_btn = None
+        self.user_prompt_browser = None
+        self.user_translate_btn = None
+        self.response_browser = None
+        self.response_translate_btn = None
         
         self.setWindowTitle("Result Details")
         self.setModal(True)
@@ -652,18 +672,51 @@ class ResultDetailDialog(QDialog):
         layout.setContentsMargins(10, 10, 10, 10)
         
         # System Prompt
-        system_group = QGroupBox("System Prompt")
-        system_layout = QVBoxLayout(system_group)
+        system_group = QGroupBox()
+        system_group_layout = QVBoxLayout(system_group)
         
+        # Header with title and translate button
+        system_header = QHBoxLayout()
+        system_label = QLabel("System Prompt")
+        system_label.setStyleSheet("font-weight: bold; font-size: 13px;")
+        system_header.addWidget(system_label)
+        system_header.addStretch()
+        
+        self.system_translate_btn = QPushButton("🌐 Translate")
+        self.system_translate_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #28a745;
+                color: white;
+                border: none;
+                padding: 6px 12px;
+                border-radius: 4px;
+                font-size: 11px;
+                font-weight: 500;
+            }
+            QPushButton:hover {
+                background-color: #218838;
+            }
+            QPushButton:disabled {
+                background-color: #6c757d;
+            }
+        """)
+        self.system_translate_btn.clicked.connect(lambda: self.toggle_system_translation())
+        if not self.db_client or not self.active_endpoint:
+            self.system_translate_btn.setEnabled(False)
+        system_header.addWidget(self.system_translate_btn)
+        
+        system_group_layout.addLayout(system_header)
+        
+        # System prompt text
         stored_system = self.result_data.get('systemPromptTemplate')
         if stored_system:
             system_text = stored_system
         else:
             system_text = self.version_data.get('system_prompt', 'N/A') if self.version_data else 'N/A'
         
-        system_browser = QTextBrowser()
-        system_browser.setPlainText(system_text)
-        system_browser.setStyleSheet("""
+        self.system_prompt_browser = QTextBrowser()
+        self.system_prompt_browser.setPlainText(system_text)
+        self.system_prompt_browser.setStyleSheet("""
             QTextBrowser {
                 border: 1px solid #d0d0d0;
                 border-radius: 4px;
@@ -673,13 +726,46 @@ class ResultDetailDialog(QDialog):
                 font-size: 12px;
             }
         """)
-        system_layout.addWidget(system_browser)
+        system_group_layout.addWidget(self.system_prompt_browser)
         layout.addWidget(system_group)
         
         # User Prompt
-        user_group = QGroupBox("User Prompt")
-        user_layout = QVBoxLayout(user_group)
+        user_group = QGroupBox()
+        user_group_layout = QVBoxLayout(user_group)
         
+        # Header with title and translate button
+        user_header = QHBoxLayout()
+        user_label = QLabel("User Prompt")
+        user_label.setStyleSheet("font-weight: bold; font-size: 13px;")
+        user_header.addWidget(user_label)
+        user_header.addStretch()
+        
+        self.user_translate_btn = QPushButton("🌐 Translate")
+        self.user_translate_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #28a745;
+                color: white;
+                border: none;
+                padding: 6px 12px;
+                border-radius: 4px;
+                font-size: 11px;
+                font-weight: 500;
+            }
+            QPushButton:hover {
+                background-color: #218838;
+            }
+            QPushButton:disabled {
+                background-color: #6c757d;
+            }
+        """)
+        self.user_translate_btn.clicked.connect(lambda: self.toggle_user_translation())
+        if not self.db_client or not self.active_endpoint:
+            self.user_translate_btn.setEnabled(False)
+        user_header.addWidget(self.user_translate_btn)
+        
+        user_group_layout.addLayout(user_header)
+        
+        # User prompt text
         stored_user = self.result_data.get('userPromptTemplate')
         if stored_user:
             user_text = stored_user
@@ -688,9 +774,9 @@ class ResultDetailDialog(QDialog):
             input_data = self.result_data.get('inputData', {})
             user_text = self._render_prompt(content, input_data)
         
-        user_browser = QTextBrowser()
-        user_browser.setPlainText(user_text)
-        user_browser.setStyleSheet("""
+        self.user_prompt_browser = QTextBrowser()
+        self.user_prompt_browser.setPlainText(user_text)
+        self.user_prompt_browser.setStyleSheet("""
             QTextBrowser {
                 border: 1px solid #d0d0d0;
                 border-radius: 4px;
@@ -700,7 +786,7 @@ class ResultDetailDialog(QDialog):
                 font-size: 12px;
             }
         """)
-        user_layout.addWidget(user_browser)
+        user_group_layout.addWidget(self.user_prompt_browser)
         layout.addWidget(user_group)
         
         return widget
@@ -712,14 +798,19 @@ class ResultDetailDialog(QDialog):
         layout.setContentsMargins(10, 10, 10, 10)
         
         # Response content
-        response_group = QGroupBox("AI Response")
+        response_group = QGroupBox()
         response_layout = QVBoxLayout(response_group)
         
-        # Copy button in header
+        # Header with title and buttons
         header_layout = QHBoxLayout()
+        
+        response_title = QLabel("AI Response")
+        response_title.setStyleSheet("font-weight: bold; font-size: 13px;")
+        header_layout.addWidget(response_title)
+        
         header_layout.addStretch()
         
-        copy_button = QPushButton("📋 Copy Response")
+        copy_button = QPushButton("📋 Copy")
         copy_button.setStyleSheet("""
             QPushButton {
                 background-color: #3498db;
@@ -728,6 +819,7 @@ class ResultDetailDialog(QDialog):
                 padding: 6px 12px;
                 border-radius: 4px;
                 font-size: 11px;
+                font-weight: 500;
             }
             QPushButton:hover {
                 background-color: #2980b9;
@@ -735,13 +827,37 @@ class ResultDetailDialog(QDialog):
         """)
         copy_button.clicked.connect(self.copy_response)
         header_layout.addWidget(copy_button)
+        
+        self.response_translate_btn = QPushButton("🌐 Translate")
+        self.response_translate_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #28a745;
+                color: white;
+                border: none;
+                padding: 6px 12px;
+                border-radius: 4px;
+                font-size: 11px;
+                font-weight: 500;
+            }
+            QPushButton:hover {
+                background-color: #218838;
+            }
+            QPushButton:disabled {
+                background-color: #6c757d;
+            }
+        """)
+        self.response_translate_btn.clicked.connect(lambda: self.toggle_response_translation())
+        if not self.db_client or not self.active_endpoint:
+            self.response_translate_btn.setEnabled(False)
+        header_layout.addWidget(self.response_translate_btn)
+        
         response_layout.addLayout(header_layout)
         
         # Response text
         response_content = self._extract_response_content(self.result_data.get('output', {}))
-        response_browser = QTextBrowser()
-        response_browser.setPlainText(response_content)
-        response_browser.setStyleSheet("""
+        self.response_browser = QTextBrowser()
+        self.response_browser.setPlainText(response_content)
+        self.response_browser.setStyleSheet("""
             QTextBrowser {
                 border: 1px solid #d0d0d0;
                 border-radius: 4px;
@@ -752,7 +868,7 @@ class ResultDetailDialog(QDialog):
                 line-height: 1.6;
             }
         """)
-        response_layout.addWidget(response_browser)
+        response_layout.addWidget(self.response_browser)
         layout.addWidget(response_group)
         
         return widget
@@ -844,6 +960,222 @@ class ResultDetailDialog(QDialog):
                 QTimer.singleShot(2000, lambda: sender.setText(original_text))
         except Exception as e:
             QMessageBox.warning(self, "Copy Error", f"Failed to copy: {str(e)}")
+    
+    def toggle_system_translation(self):
+        """Toggle system prompt translation"""
+        if not self.db_client or not self.active_endpoint:
+            QMessageBox.warning(self, "No LLM Provider", "번역을 위해서는 활성화된 LLM 공급자가 필요합니다.")
+            return
+        
+        if self.system_prompt_translated:
+            # Show original
+            stored_system = self.result_data.get('systemPromptTemplate')
+            if stored_system:
+                system_text = stored_system
+            else:
+                system_text = self.version_data.get('system_prompt', 'N/A') if self.version_data else 'N/A'
+            self.system_prompt_browser.setPlainText(system_text)
+            self.system_translate_btn.setText("🌐 Translate")
+            self.system_prompt_translated = False
+        else:
+            # Check if we already have translation
+            if self.system_prompt_translation:
+                self.system_prompt_browser.setPlainText(self.system_prompt_translation)
+                self.system_translate_btn.setText("🔄 Show Original")
+                self.system_prompt_translated = True
+            else:
+                # Need to translate
+                self.translate_system_prompt()
+    
+    def toggle_user_translation(self):
+        """Toggle user prompt translation"""
+        if not self.db_client or not self.active_endpoint:
+            QMessageBox.warning(self, "No LLM Provider", "번역을 위해서는 활성화된 LLM 공급자가 필요합니다.")
+            return
+        
+        if self.user_prompt_translated:
+            # Show original
+            stored_user = self.result_data.get('userPromptTemplate')
+            if stored_user:
+                user_text = stored_user
+            else:
+                content = self.version_data.get('content', '') if self.version_data else ''
+                input_data = self.result_data.get('inputData', {})
+                user_text = self._render_prompt(content, input_data)
+            self.user_prompt_browser.setPlainText(user_text)
+            self.user_translate_btn.setText("🌐 Translate")
+            self.user_prompt_translated = False
+        else:
+            # Check if we already have translation
+            if self.user_prompt_translation:
+                self.user_prompt_browser.setPlainText(self.user_prompt_translation)
+                self.user_translate_btn.setText("🔄 Show Original")
+                self.user_prompt_translated = True
+            else:
+                # Need to translate
+                self.translate_user_prompt()
+    
+    def toggle_response_translation(self):
+        """Toggle response translation"""
+        if not self.db_client or not self.active_endpoint:
+            QMessageBox.warning(self, "No LLM Provider", "번역을 위해서는 활성화된 LLM 공급자가 필요합니다.")
+            return
+        
+        if self.response_translated:
+            # Show original
+            response_content = self._extract_response_content(self.result_data.get('output', {}))
+            self.response_browser.setPlainText(response_content)
+            self.response_translate_btn.setText("🌐 Translate")
+            self.response_translated = False
+        else:
+            # Check if we already have translation
+            if self.response_translation:
+                self.response_browser.setPlainText(self.response_translation)
+                self.response_translate_btn.setText("🔄 Show Original")
+                self.response_translated = True
+            else:
+                # Need to translate
+                self.translate_response()
+    
+    def translate_system_prompt(self):
+        """Translate system prompt"""
+        stored_system = self.result_data.get('systemPromptTemplate')
+        if stored_system:
+            system_text = stored_system
+        else:
+            system_text = self.version_data.get('system_prompt', 'N/A') if self.version_data else 'N/A'
+        
+        if not system_text or system_text == 'N/A':
+            QMessageBox.warning(self, "No Content", "번역할 내용이 없습니다.")
+            return
+        
+        # Disable button and show loading
+        self.system_translate_btn.setEnabled(False)
+        self.system_translate_btn.setText("번역 중...")
+        self.system_prompt_browser.setPlainText("번역 중... 잠시만 기다려 주세요.")
+        
+        # Start translation thread
+        self.system_translate_thread = TranslateThread(
+            self.db_client,
+            system_text,
+            self.active_endpoint
+        )
+        self.system_translate_thread.finished.connect(self.on_system_translation_finished)
+        self.system_translate_thread.error.connect(self.on_system_translation_error)
+        self.system_translate_thread.start()
+    
+    def translate_user_prompt(self):
+        """Translate user prompt"""
+        stored_user = self.result_data.get('userPromptTemplate')
+        if stored_user:
+            user_text = stored_user
+        else:
+            content = self.version_data.get('content', '') if self.version_data else ''
+            input_data = self.result_data.get('inputData', {})
+            user_text = self._render_prompt(content, input_data)
+        
+        if not user_text or user_text == 'N/A':
+            QMessageBox.warning(self, "No Content", "번역할 내용이 없습니다.")
+            return
+        
+        # Disable button and show loading
+        self.user_translate_btn.setEnabled(False)
+        self.user_translate_btn.setText("번역 중...")
+        self.user_prompt_browser.setPlainText("번역 중... 잠시만 기다려 주세요.")
+        
+        # Start translation thread
+        self.user_translate_thread = TranslateThread(
+            self.db_client,
+            user_text,
+            self.active_endpoint
+        )
+        self.user_translate_thread.finished.connect(self.on_user_translation_finished)
+        self.user_translate_thread.error.connect(self.on_user_translation_error)
+        self.user_translate_thread.start()
+    
+    def translate_response(self):
+        """Translate response"""
+        response_content = self._extract_response_content(self.result_data.get('output', {}))
+        
+        if not response_content or response_content == 'No content':
+            QMessageBox.warning(self, "No Content", "번역할 내용이 없습니다.")
+            return
+        
+        # Disable button and show loading
+        self.response_translate_btn.setEnabled(False)
+        self.response_translate_btn.setText("번역 중...")
+        self.response_browser.setPlainText("번역 중... 잠시만 기다려 주세요.")
+        
+        # Start translation thread
+        self.response_translate_thread = TranslateThread(
+            self.db_client,
+            response_content,
+            self.active_endpoint
+        )
+        self.response_translate_thread.finished.connect(self.on_response_translation_finished)
+        self.response_translate_thread.error.connect(self.on_response_translation_error)
+        self.response_translate_thread.start()
+    
+    def on_system_translation_finished(self, translated_text: str):
+        """Handle system prompt translation completion"""
+        self.system_prompt_translation = translated_text
+        self.system_prompt_browser.setPlainText(translated_text)
+        self.system_translate_btn.setText("🔄 Show Original")
+        self.system_translate_btn.setEnabled(True)
+        self.system_prompt_translated = True
+    
+    def on_system_translation_error(self, error_message: str):
+        """Handle system prompt translation error"""
+        QMessageBox.warning(self, "Translation Error", f"번역 중 오류가 발생했습니다:\n{error_message}")
+        # Restore original text
+        stored_system = self.result_data.get('systemPromptTemplate')
+        if stored_system:
+            system_text = stored_system
+        else:
+            system_text = self.version_data.get('system_prompt', 'N/A') if self.version_data else 'N/A'
+        self.system_prompt_browser.setPlainText(system_text)
+        self.system_translate_btn.setText("🌐 Translate")
+        self.system_translate_btn.setEnabled(True)
+    
+    def on_user_translation_finished(self, translated_text: str):
+        """Handle user prompt translation completion"""
+        self.user_prompt_translation = translated_text
+        self.user_prompt_browser.setPlainText(translated_text)
+        self.user_translate_btn.setText("🔄 Show Original")
+        self.user_translate_btn.setEnabled(True)
+        self.user_prompt_translated = True
+    
+    def on_user_translation_error(self, error_message: str):
+        """Handle user prompt translation error"""
+        QMessageBox.warning(self, "Translation Error", f"번역 중 오류가 발생했습니다:\n{error_message}")
+        # Restore original text
+        stored_user = self.result_data.get('userPromptTemplate')
+        if stored_user:
+            user_text = stored_user
+        else:
+            content = self.version_data.get('content', '') if self.version_data else ''
+            input_data = self.result_data.get('inputData', {})
+            user_text = self._render_prompt(content, input_data)
+        self.user_prompt_browser.setPlainText(user_text)
+        self.user_translate_btn.setText("🌐 Translate")
+        self.user_translate_btn.setEnabled(True)
+    
+    def on_response_translation_finished(self, translated_text: str):
+        """Handle response translation completion"""
+        self.response_translation = translated_text
+        self.response_browser.setPlainText(translated_text)
+        self.response_translate_btn.setText("🔄 Show Original")
+        self.response_translate_btn.setEnabled(True)
+        self.response_translated = True
+    
+    def on_response_translation_error(self, error_message: str):
+        """Handle response translation error"""
+        QMessageBox.warning(self, "Translation Error", f"번역 중 오류가 발생했습니다:\n{error_message}")
+        # Restore original text
+        response_content = self._extract_response_content(self.result_data.get('output', {}))
+        self.response_browser.setPlainText(response_content)
+        self.response_translate_btn.setText("🌐 Translate")
+        self.response_translate_btn.setEnabled(True)
 
 
 class ResultDetail(QWidget):
@@ -1757,7 +2089,13 @@ class ResultViewer(QWidget):
     
     def on_history_item_double_clicked(self, result_data: Dict[str, Any]):
         """Handle history item double click - show detailed popup"""
-        dialog = ResultDetailDialog(result_data, self.version_data, self)
+        dialog = ResultDetailDialog(
+            result_data, 
+            self.version_data, 
+            self.db_client,
+            self.active_endpoint,
+            self
+        )
         dialog.exec()
             
     def run_prompt(self):
