@@ -100,7 +100,7 @@ class DatabaseClient:
         }
     
     def _format_result(self, result: Dict[str, Any]) -> Dict[str, Any]:
-        """Format result data for frontend compatibility"""
+        """Format result data for frontend compatibility with improved endpoint mapping"""
         if not result:
             return result
             
@@ -119,15 +119,36 @@ class DatabaseClient:
             except json.JSONDecodeError:
                 output = {}
         
+        # Try to parse full endpoint info from endpoint_info field first
+        endpoint_info = {}
+        if result.get('endpoint_info'):
+            try:
+                endpoint_info = json.loads(result['endpoint_info'])
+            except json.JSONDecodeError:
+                endpoint_info = {}
+        
+        # Build comprehensive endpoint data
+        endpoint = {}
+        if endpoint_info:
+            # Use full endpoint info if available
+            endpoint = endpoint_info.copy()
+        else:
+            # Fallback to individual fields for backward compatibility
+            endpoint = {
+                'name': result.get('provider_name') or result.get('model', 'Unknown'),
+                'defaultModel': result.get('model_name') or result.get('model', ''),
+                'baseUrl': result.get('provider', ''),
+                'provider': result.get('provider_name', 'Unknown')
+            }
+        
         return {
             'inputData': input_data,
             'output': output,
             'timestamp': result.get('timestamp', ''),
-            'endpoint': {
-                'name': result.get('model', 'Unknown'),
-                'defaultModel': result.get('model', ''),
-                'baseUrl': result.get('provider', '')
-            }
+            'endpoint': endpoint,
+            'temperature': result.get('temperature', 0.7),  # Include temperature from database
+            'userPromptTemplate': result.get('userPromptTemplate'),  # Already converted to camelCase in database.py
+            'systemPromptTemplate': result.get('systemPromptTemplate')  # Already converted to camelCase in database.py
         }
         
     def create_task(self, task_id: str, name: str) -> Optional[Dict[str, Any]]:
@@ -413,32 +434,27 @@ class DatabaseClient:
                 
             result_data = response.json()
             
-            # Save result to database
-            timestamp = datetime.now().isoformat()
+            # Save result to database with complete endpoint info and temperature
+            # Create complete endpoint info including all necessary fields
+            complete_endpoint_info = endpoint.copy()  # Start with full endpoint data
+            complete_endpoint_info.update({
+                'model': model,  # Ensure model field is present
+                'modelName': model,  # Alternative model field name
+                'defaultModel': model,  # Consistent with UI expectations
+                'provider': endpoint.get('name', 'Unknown'),
+                'usedModel': model,  # Track actually used model
+                'temperature': temperature  # Include temperature in endpoint info
+            })
             
-            # Format result data for database
-            result_record = {
-                'version_id': version_id,
-                'input_data': json.dumps(input_data),
-                'output': json.dumps(result_data),
-                'timestamp': timestamp,
-                'model': model,
-                'provider': endpoint.get('name', 'Unknown')
-            }
-            
-            # Save to database - create endpoint info
-            endpoint_info = {
-                'name': endpoint.get('name', 'Unknown'),
-                'model': model,
-                'baseUrl': endpoint.get('baseUrl', ''),
-                'provider': endpoint.get('name', 'Unknown')
-            }
-            
+            # Save with enhanced information including prompt templates used at execution time
             self.db.add_result(
                 version_id=version_id,
                 input_data=input_data,
                 output=result_data,
-                endpoint_info=endpoint_info
+                endpoint_info=complete_endpoint_info,
+                temperature=temperature,
+                user_prompt_template=user_prompt,  # 실행 시점의 렌더링된 최종 user prompt
+                system_prompt_template=system_prompt_rendered  # 실행 시점의 렌더링된 최종 system prompt
             )
             
             return result_data

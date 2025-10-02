@@ -510,44 +510,43 @@ class ResultHistoryItem(QFrame):
         return math.ceil(total_chars / 4)
         
     def _get_model_info(self) -> Optional[str]:
-        """Get model information with temperature"""
+        """Get model information with temperature - improved version"""
         endpoint = self.result_data.get('endpoint', {})
         model_name = None
         
-        # Try multiple ways to get model information
+        # Priority-based model name extraction
         if endpoint:
-            # Method 1: Check defaultModel field
-            if endpoint.get('defaultModel'):
-                model_name = endpoint['defaultModel']
-            # Method 2: Check model field (alternative naming)
-            elif endpoint.get('model'):
-                model_name = endpoint['model']
-            # Method 3: Check modelName field
-            elif endpoint.get('modelName'):
-                model_name = endpoint['modelName']
-            # Method 4: If no model info, show provider name
-            elif endpoint.get('name'):
-                model_name = endpoint['name']
-            # Method 5: Check for nested model info
-            elif 'config' in endpoint and endpoint['config'].get('model'):
-                model_name = endpoint['config']['model']
-        
-        # Method 6: Check output for model info (some APIs include this)
-        if not model_name:
-            output = self.result_data.get('output', {})
-            if isinstance(output, dict):
-                if output.get('model'):
+            # Priority 1: usedModel (actual model used in API call)
+            model_name = endpoint.get('usedModel')
+            
+            # Priority 2: defaultModel field
+            if not model_name:
+                model_name = endpoint.get('defaultModel')
+            
+            # Priority 3: model field (alternative naming)
+            if not model_name:
+                model_name = endpoint.get('model')
+            
+            # Priority 4: modelName field
+            if not model_name:
+                model_name = endpoint.get('modelName')
+            
+            # Priority 5: Extract from API response
+            if not model_name:
+                output = self.result_data.get('output', {})
+                if isinstance(output, dict) and output.get('model'):
                     model_name = output['model']
-                # For OpenAI-style responses
-                elif output.get('usage', {}).get('model'):
-                    model_name = output['usage']['model']
+            
+            # Priority 6: Use provider name as fallback
+            if not model_name:
+                model_name = endpoint.get('name') or endpoint.get('provider')
         
         if model_name:
-            # Add temperature to model info
+            # Get temperature from result data (now stored properly)
             temperature = self.result_data.get('temperature', 0.7)
             return f"{model_name} • T:{temperature:.1f}"
         
-        return None
+        return "Unknown Model • T:0.7"
         
     def mousePressEvent(self, event):
         """Handle mouse press events"""
@@ -605,21 +604,34 @@ class ResultDetail(QWidget):
     def show_result(self, result_data: Dict[str, Any], version_data: Optional[Dict[str, Any]] = None):
         """Show detailed result information with guaranteed scroll to top"""
         print(f"🔄 show_result called - forcing scroll to absolute top")
-        
+
+        # 디버깅: 전달받은 데이터 확인
+        print(f"📊 DEBUG show_result - received data:")
+        print(f"   result_data keys: {list(result_data.keys()) if result_data else 'None'}")
+        if result_data:
+            user_template = result_data.get('userPromptTemplate')
+            system_template = result_data.get('systemPromptTemplate')
+            print(f"   userPromptTemplate: {user_template[:50]}..." if user_template else "   userPromptTemplate: None")
+            print(f"   systemPromptTemplate: {system_template[:50]}..." if system_template else "   systemPromptTemplate: None")
+            print(f"   timestamp: {result_data.get('timestamp', 'Unknown')}")
+            print(f"   result_id: {result_data.get('id', 'Unknown')}")
+        else:
+            print("   result_data: None")
+
         # STEP 1: Immediately force scroll to top before any changes
         self.force_scroll_to_absolute_top()
-        
+
         # STEP 2: Completely recreate the scroll widget to avoid accumulation
         self.recreate_scroll_widget()
-        
+
         # STEP 3: Build new content in the fresh widget
         self.build_result_content(result_data, version_data)
-        
+
         # STEP 4: Final scroll to top with multiple guarantees
         QTimer.singleShot(50, self.force_scroll_to_absolute_top)
         QTimer.singleShot(150, self.force_scroll_to_absolute_top)
         QTimer.singleShot(300, self.force_scroll_to_absolute_top)
-        
+
         print(f"✅ show_result completed - content should be at top")
     
     def recreate_scroll_widget(self):
@@ -699,12 +711,31 @@ class ResultDetail(QWidget):
         request_group = QGroupBox("Request Message")
         request_layout = QVBoxLayout(request_group)
         
-        # Build request message
-        system_prompt = version_data.get('system_prompt', '') if version_data else ''
-        user_prompt = self._render_prompt(
-            version_data.get('content', '') if version_data else '',
-            result_data.get('inputData', {})
-        )
+        # Build request message using stored templates first (fixes timing issue)
+        stored_system_template = result_data.get('systemPromptTemplate')
+        stored_user_template = result_data.get('userPromptTemplate')
+
+        # DEBUG: Print what we received
+        print(f"🔍 DEBUG build_result_content:")
+        print(f"   stored_system_template: {stored_system_template[:50]}..." if stored_system_template else "   stored_system_template: None")
+        print(f"   stored_user_template: {stored_user_template[:50]}..." if stored_user_template else "   stored_user_template: None")
+        print(f"   timestamp: {result_data.get('timestamp', 'Unknown')}")
+        print(f"   result_data ID: {result_data.get('id', 'Unknown')}")
+
+        if stored_system_template and stored_user_template:
+            # Use stored templates from execution time (accurate)
+            system_prompt = stored_system_template
+            user_prompt = stored_user_template
+            print("   ✅ Using stored templates (accurate)")
+        else:
+            # Fallback to current version templates (may be inaccurate for old results)
+            print("   ⚠️ 저장된 템플릿이 없어서 폴백 사용")
+            system_prompt = version_data.get('system_prompt', '') if version_data else ''
+            user_prompt = self._render_prompt(
+                version_data.get('content', '') if version_data else '',
+                result_data.get('inputData', {})
+            )
+            print("   ❌ Using fallback templates (may be inaccurate)")
         
         request_text = f"---------- System Prompt ----------\n{system_prompt}\n\n---------- User Prompt ----------\n{user_prompt}"
         
@@ -1435,11 +1466,11 @@ class ResultViewer(QWidget):
         if self.results:
             for i, result in enumerate(self.results):
                 history_item = ResultHistoryItem(result, len(self.results) - i)
-                history_item.clicked.connect(
-                    lambda data: self.result_detail.show_result(data, self.version_data)
-                )
+
+                # 시그널에서 emit된 데이터를 직접 받아서 처리
+                history_item.clicked.connect(self.on_history_item_clicked)
                 history_item.delete_requested.connect(self.delete_history_item)
-                
+
                 self.history_list_layout.insertWidget(
                     self.history_list_layout.count() - 1,
                     history_item
@@ -1450,6 +1481,15 @@ class ResultViewer(QWidget):
             empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
             empty_label.setStyleSheet("color: #666; font-style: italic; padding: 40px;")
             self.history_list_layout.insertWidget(0, empty_label)
+    
+    def on_history_item_clicked(self, result_data: Dict[str, Any]):
+        """Handle history item click - receives data directly from signal"""
+        print(f"🖱️ History item clicked - timestamp: {result_data.get('timestamp', 'Unknown')}")
+        print(f"   userPromptTemplate: {result_data.get('userPromptTemplate', 'None')[:50] if result_data.get('userPromptTemplate') else 'None'}...")
+        print(f"   systemPromptTemplate: {result_data.get('systemPromptTemplate', 'None')[:50] if result_data.get('systemPromptTemplate') else 'None'}...")
+        
+        # Pass the result data to the detail view
+        self.result_detail.show_result(result_data, self.version_data)
             
     def run_prompt(self):
         """Run the current prompt"""
@@ -1507,21 +1547,13 @@ class ResultViewer(QWidget):
         self.progress_bar.setVisible(False)
         self.status_label.setText(f"Completed at {datetime.now().strftime('%H:%M:%S')}")
         
-        # Create result data
-        result_data = {
-            'inputData': getattr(self.llm_thread, 'input_data', {}),
-            'output': result,
-            'timestamp': datetime.now().isoformat(),
-            'endpoint': self.active_endpoint,
-            'temperature': getattr(self.llm_thread, 'temperature', 0.7)
-        }
+        # Reload version data from DB to get the newly saved result with templates
+        self.load_version_data()
         
-        # Add to results
-        self.results.insert(0, result_data)  # Add at beginning
-        
-        # Refresh displays
-        self.refresh_history()
-        self.show_latest_result(result_data)
+        # Get the latest result (first in list since they're sorted by timestamp DESC)
+        if self.results:
+            latest_result = self.results[0]
+            self.show_latest_result(latest_result)
         
     def on_llm_error(self, error: str):
         """Handle LLM call error"""
