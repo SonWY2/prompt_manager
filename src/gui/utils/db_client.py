@@ -551,6 +551,123 @@ class DatabaseClient:
                 'message': f'Unexpected error: {str(e)}'
             }
         
+    def calculate_tokens(self, model: str, system_prompt: str, user_prompt: str) -> Optional[Dict[str, Any]]:
+        """Calculate token count for the given prompts by directly calling LLM endpoint"""
+        try:
+            # Get active endpoint
+            endpoints_data = self.get_llm_endpoints()
+            active_endpoint_id = endpoints_data.get('activeEndpointId')
+            
+            if not active_endpoint_id:
+                return {
+                    'success': False,
+                    'error': 'No active endpoint',
+                    'message': 'No active LLM endpoint configured'
+                }
+            
+            # Find active endpoint
+            active_endpoint = None
+            for ep in endpoints_data.get('endpoints', []):
+                if ep.get('id') == active_endpoint_id:
+                    active_endpoint = ep
+                    break
+            
+            if not active_endpoint:
+                return {
+                    'success': False,
+                    'error': 'Active endpoint not found',
+                    'message': 'Active LLM endpoint not found'
+                }
+            
+            base_url = active_endpoint.get('baseUrl', '').rstrip('/')
+            api_key = active_endpoint.get('apiKey', '')
+            
+            if not base_url or not api_key:
+                return {
+                    'success': False,
+                    'error': 'Missing endpoint configuration',
+                    'message': 'Endpoint URL or API key is missing'
+                }
+            
+            # Prepare messages in ChatML format
+            messages = []
+            if system_prompt and system_prompt.strip():
+                messages.append({
+                    'role': 'system',
+                    'content': system_prompt.strip()
+                })
+            if user_prompt and user_prompt.strip():
+                messages.append({
+                    'role': 'user',
+                    'content': user_prompt.strip()
+                })
+            
+            # Try to call endpoint's tokenize endpoint
+            tokenize_url = f"{base_url}/tokenize"
+            
+            headers = {
+                'Authorization': f'Bearer {api_key}',
+                'Content-Type': 'application/json'
+            }
+            
+            payload = {
+                'model': model,
+                'messages': messages
+            }
+            
+            try:
+                response = requests.post(
+                    tokenize_url,
+                    headers=headers,
+                    json=payload,
+                    timeout=10
+                )
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    return {
+                        'success': True,
+                        'token_count': data.get('token_count', 0),
+                        'model': model,
+                        'estimated': data.get('estimated', False)
+                    }
+            except:
+                # If tokenize endpoint doesn't exist, fallback to estimation
+                pass
+            
+            # Fallback: Estimate tokens (rough approximation: 1 token ≈ 4 characters)
+            total_text = ''
+            for msg in messages:
+                total_text += msg.get('content', '')
+            
+            estimated_tokens = len(total_text) // 4
+            
+            return {
+                'success': True,
+                'token_count': estimated_tokens,
+                'model': model,
+                'estimated': True
+            }
+                
+        except Exception as e:
+            # Last resort fallback estimation
+            try:
+                total_text = (system_prompt or '') + (user_prompt or '')
+                estimated_tokens = len(total_text) // 4
+                
+                return {
+                    'success': True,
+                    'token_count': estimated_tokens,
+                    'model': model,
+                    'estimated': True
+                }
+            except:
+                return {
+                    'success': False,
+                    'error': str(e),
+                    'message': f'Failed to calculate tokens: {str(e)}'
+                }
+    
     def test_llm_chat(self, base_url: str, api_key: str, model: str, 
                      message: str) -> Optional[Dict[str, Any]]:
         """Test LLM chat endpoint"""

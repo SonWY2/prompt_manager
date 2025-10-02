@@ -9,15 +9,45 @@ from PyQt6.QtWidgets import (
     QFormLayout, QGroupBox, QSpacerItem, QSizePolicy, QStackedWidget,
     QDialog
 )
-from PyQt6.QtCore import Qt, pyqtSignal, QTimer
+from PyQt6.QtCore import Qt, pyqtSignal, QTimer, QThread, pyqtSlot
 from PyQt6.QtGui import QFont, QTextCharFormat, QColor, QSyntaxHighlighter, QTextDocument
 from typing import Dict, List, Optional, Any
 import re
 import json
+import hashlib
 from datetime import datetime
 
 from ..utils.db_client import DatabaseClient
 from .version_comparison_dialog import VersionComparisonDialog
+
+
+class TokenCalculationThread(QThread):
+    """Thread for calculating token count asynchronously"""
+    
+    finished = pyqtSignal(dict)  # Emits result dictionary
+    
+    def __init__(self, db_client: DatabaseClient, model: str, system_prompt: str, user_prompt: str):
+        super().__init__()
+        self.db_client = db_client
+        self.model = model
+        self.system_prompt = system_prompt
+        self.user_prompt = user_prompt
+        
+    def run(self):
+        """Run token calculation in background"""
+        try:
+            result = self.db_client.calculate_tokens(
+                model=self.model,
+                system_prompt=self.system_prompt,
+                user_prompt=self.user_prompt
+            )
+            self.finished.emit(result or {'success': False, 'error': 'Unknown error'})
+        except Exception as e:
+            self.finished.emit({
+                'success': False,
+                'error': str(e),
+                'message': f'Error: {str(e)}'
+            })
 
 
 class VariableHighlighter(QSyntaxHighlighter):
@@ -781,6 +811,11 @@ class PromptEditor(QWidget):
         self.version_checkboxes = {}  # 체크박스 참조 저장
         self.compare_btn = None  # Compare 버튼 참조
         
+        # 토큰 카운팅 기능
+        self.token_cache = {}  # {cache_key: {"model": str, "count": int}}
+        self.token_label = None  # 토큰 카운트 표시 라벨
+        self.token_thread = None  # 토큰 계산 스레드
+        
         self.setup_ui()
         self.setup_connections()
         
@@ -1106,6 +1141,23 @@ class PromptEditor(QWidget):
         # Action buttons
         actions_layout = QHBoxLayout()
         
+        # Token counter label (left side)
+        self.token_label = QLabel("")
+        self.token_label.setStyleSheet("""
+            QLabel {
+                color: #495057;
+                font-size: 12px;
+                font-weight: 500;
+                padding: 6px 12px;
+                background-color: #f8f9fa;
+                border: 1px solid #dee2e6;
+                border-radius: 4px;
+            }
+        """)
+        self.token_label.setMinimumWidth(300)
+        self.token_label.hide()  # Hidden initially
+        actions_layout.addWidget(self.token_label)
+        
         # Add stretch to push buttons to the right
         actions_layout.addStretch()
         
@@ -1116,8 +1168,8 @@ class PromptEditor(QWidget):
             QPushButton {
                 background-color: #007bff;
                 color: white;
-                border: none;
-                padding: 8px 12px;
+                border: 2px solid transparent;
+                padding: 6px 12px;
                 border-radius: 4px;
                 font-weight: bold;
             }
@@ -1136,8 +1188,8 @@ class PromptEditor(QWidget):
             QPushButton {
                 background-color: #28a745;
                 color: white;
-                border: none;
-                padding: 8px 12px;
+                border: 2px solid transparent;
+                padding: 6px 12px;
                 border-radius: 4px;
                 font-weight: bold;
             }
@@ -2001,11 +2053,20 @@ class PromptEditor(QWidget):
                 # Preview 모드로 전환
                 self.apply_preview_mode()
                 preview_btn.setText("✏️ Edit Mode")
+                
+                # 토큰 계산 시작
+                self.calculate_token_count()
+                
                 print("Switched to Preview mode")
             else:
                 # Edit 모드로 전환
                 self.apply_edit_mode()
                 preview_btn.setText("👁️ Preview")
+                
+                # 토큰 라벨 숨기기
+                if self.token_label:
+                    self.token_label.hide()
+                
                 print("Switched to Edit mode")
                 
             # 버튼 체크 상태 업데이트
@@ -2021,6 +2082,124 @@ class PromptEditor(QWidget):
                     preview_btn.setText("👁️ Preview")
                 except:
                     pass
+    
+    def calculate_token_count(self):
+        """Calculate token count for current prompt"""
+        try:
+            if not self.token_label:
+                return
+            
+            # Get current prompts
+            system_prompt = self.text_edits['system'].toPlainText() if 'system' in self.text_edits else ""
+            user_prompt = self.text_edits['main'].toPlainText() if 'main' in self.text_edits else ""
+            
+            # Get active endpoint and model
+            endpoints_data = self.db_client.get_llm_endpoints()
+            active_endpoint_id = endpoints_data.get('activeEndpointId')
+            
+            if not active_endpoint_id:
+                self.token_label.setText("⚠️ No active LLM endpoint configured")
+                self.token_label.show()
+                return
+            
+            # Find active endpoint
+            active_endpoint = None
+            for ep in endpoints_data.get('endpoints', []):
+                if ep.get('id') == active_endpoint_id:
+                    active_endpoint = ep
+                    break
+            
+            if not active_endpoint:
+                self.token_label.setText("⚠️ Active endpoint not found")
+                self.token_label.show()
+                return
+            
+            model = active_endpoint.get('defaultModel', 'unknown')
+            
+            # Generate cache key
+            cache_key = self._get_cache_key(model, system_prompt, user_prompt)
+            
+            # Check cache
+            if cache_key in self.token_cache:
+                cached_data = self.token_cache[cache_key]
+                self._display_token_count(cached_data['model'], cached_data['count'])
+                return
+            
+            # Show loading state
+            self.token_label.setText("⏳ Calculating tokens...")
+            self.token_label.show()
+            
+            # Start token calculation thread
+            self.token_thread = TokenCalculationThread(
+                self.db_client,
+                model,
+                system_prompt,
+                user_prompt
+            )
+            self.token_thread.finished.connect(
+                lambda result: self.on_token_calculation_finished(result, cache_key)
+            )
+            self.token_thread.start()
+            
+        except Exception as e:
+            print(f"Error calculating token count: {e}")
+            if self.token_label:
+                error_msg = str(e).lower()
+                if 'connection' in error_msg or 'connect' in error_msg:
+                    self.token_label.setText("❌ Backend server not running (port 8000)")
+                else:
+                    self.token_label.setText(f"❌ Error: {str(e)}")
+                self.token_label.show()
+    
+    def _get_cache_key(self, model: str, system_prompt: str, user_prompt: str) -> str:
+        """Generate cache key for token count"""
+        content = f"{model}|{system_prompt}|{user_prompt}"
+        return hashlib.md5(content.encode()).hexdigest()
+    
+    def on_token_calculation_finished(self, result: dict, cache_key: str):
+        """Handle token calculation result"""
+        try:
+            if result.get('success'):
+                token_count = result.get('token_count', 0)
+                model = result.get('model', 'unknown')
+                
+                # Cache the result
+                self.token_cache[cache_key] = {
+                    'model': model,
+                    'count': token_count
+                }
+                
+                # Display result
+                self._display_token_count(model, token_count)
+                
+            else:
+                error_msg = result.get('message', result.get('error', 'Unknown error'))
+                self.token_label.setText(f"❌ {error_msg}")
+                self.token_label.show()
+                
+        except Exception as e:
+            print(f"Error handling token calculation result: {e}")
+            if self.token_label:
+                self.token_label.setText(f"❌ Error: {str(e)}")
+                self.token_label.show()
+    
+    def _display_token_count(self, model: str, token_count: int):
+        """Display token count in label"""
+        try:
+            if not self.token_label:
+                return
+            
+            # Format number with commas
+            formatted_count = f"{token_count:,}"
+            
+            # Display format: model: xxx / total token count: xxx,xxx
+            display_text = f"model: {model} / total token count: {formatted_count}"
+            
+            self.token_label.setText(display_text)
+            self.token_label.show()
+            
+        except Exception as e:
+            print(f"Error displaying token count: {e}")
     
     def apply_preview_mode(self):
         """Preview 모드 스타일과 내용 적용"""
