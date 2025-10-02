@@ -603,21 +603,6 @@ class ResultDetail(QWidget):
         
     def show_result(self, result_data: Dict[str, Any], version_data: Optional[Dict[str, Any]] = None):
         """Show detailed result information with guaranteed scroll to top"""
-        print(f"🔄 show_result called - forcing scroll to absolute top")
-
-        # 디버깅: 전달받은 데이터 확인
-        print(f"📊 DEBUG show_result - received data:")
-        print(f"   result_data keys: {list(result_data.keys()) if result_data else 'None'}")
-        if result_data:
-            user_template = result_data.get('userPromptTemplate')
-            system_template = result_data.get('systemPromptTemplate')
-            print(f"   userPromptTemplate: {user_template[:50]}..." if user_template else "   userPromptTemplate: None")
-            print(f"   systemPromptTemplate: {system_template[:50]}..." if system_template else "   systemPromptTemplate: None")
-            print(f"   timestamp: {result_data.get('timestamp', 'Unknown')}")
-            print(f"   result_id: {result_data.get('id', 'Unknown')}")
-        else:
-            print("   result_data: None")
-
         # STEP 1: Immediately force scroll to top before any changes
         self.force_scroll_to_absolute_top()
 
@@ -631,14 +616,10 @@ class ResultDetail(QWidget):
         QTimer.singleShot(50, self.force_scroll_to_absolute_top)
         QTimer.singleShot(150, self.force_scroll_to_absolute_top)
         QTimer.singleShot(300, self.force_scroll_to_absolute_top)
-
-        print(f"✅ show_result completed - content should be at top")
     
     def recreate_scroll_widget(self):
         """Completely recreate the scroll widget to avoid content accumulation"""
         try:
-            print("🔄 Recreating scroll widget from scratch")
-            
             # Remove old scroll area completely
             layout = self.layout()
             if layout:
@@ -664,16 +645,13 @@ class ResultDetail(QWidget):
             # Add to main layout
             layout.addWidget(self.scroll_area)
             
-            print("✅ Fresh scroll widget created")
-            
         except Exception as e:
-            print(f"❌ Error recreating scroll widget: {e}")
+            pass
     
     def force_scroll_to_absolute_top(self):
         """Force scroll to absolute top with maximum certainty"""
         try:
             if not hasattr(self, 'scroll_area') or not self.scroll_area:
-                print("⚠️ No scroll area available for scrolling")
                 return
             
             # Get vertical scrollbar
@@ -699,11 +677,8 @@ class ResultDetail(QWidget):
             # Method 5: Final value setting
             scrollbar.setValue(0)
             
-            current_value = scrollbar.value()
-            print(f"📍 ABSOLUTE scroll to top - scrollbar value: {current_value}")
-            
         except Exception as e:
-            print(f"❌ Error in force_scroll_to_absolute_top: {e}")
+            pass
     
     def build_result_content(self, result_data: Dict[str, Any], version_data: Optional[Dict[str, Any]] = None):
         """Build the result content"""
@@ -715,27 +690,17 @@ class ResultDetail(QWidget):
         stored_system_template = result_data.get('systemPromptTemplate')
         stored_user_template = result_data.get('userPromptTemplate')
 
-        # DEBUG: Print what we received
-        print(f"🔍 DEBUG build_result_content:")
-        print(f"   stored_system_template: {stored_system_template[:50]}..." if stored_system_template else "   stored_system_template: None")
-        print(f"   stored_user_template: {stored_user_template[:50]}..." if stored_user_template else "   stored_user_template: None")
-        print(f"   timestamp: {result_data.get('timestamp', 'Unknown')}")
-        print(f"   result_data ID: {result_data.get('id', 'Unknown')}")
-
         if stored_system_template and stored_user_template:
             # Use stored templates from execution time (accurate)
             system_prompt = stored_system_template
             user_prompt = stored_user_template
-            print("   ✅ Using stored templates (accurate)")
         else:
             # Fallback to current version templates (may be inaccurate for old results)
-            print("   ⚠️ 저장된 템플릿이 없어서 폴백 사용")
             system_prompt = version_data.get('system_prompt', '') if version_data else ''
             user_prompt = self._render_prompt(
                 version_data.get('content', '') if version_data else '',
                 result_data.get('inputData', {})
             )
-            print("   ❌ Using fallback templates (may be inaccurate)")
         
         request_text = f"---------- System Prompt ----------\n{system_prompt}\n\n---------- User Prompt ----------\n{user_prompt}"
         
@@ -1484,10 +1449,6 @@ class ResultViewer(QWidget):
     
     def on_history_item_clicked(self, result_data: Dict[str, Any]):
         """Handle history item click - receives data directly from signal"""
-        print(f"🖱️ History item clicked - timestamp: {result_data.get('timestamp', 'Unknown')}")
-        print(f"   userPromptTemplate: {result_data.get('userPromptTemplate', 'None')[:50] if result_data.get('userPromptTemplate') else 'None'}...")
-        print(f"   systemPromptTemplate: {result_data.get('systemPromptTemplate', 'None')[:50] if result_data.get('systemPromptTemplate') else 'None'}...")
-        
         # Pass the result data to the detail view
         self.result_detail.show_result(result_data, self.version_data)
             
