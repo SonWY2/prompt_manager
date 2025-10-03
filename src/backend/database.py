@@ -55,7 +55,12 @@ class PromptManagerDB:
                     version_id TEXT NOT NULL,
                     input_data TEXT NOT NULL,  -- JSON 문자열로 저장
                     output TEXT NOT NULL,      -- JSON 문자열로 저장
-                    endpoint_info TEXT,        -- JSON 문자열로 저장
+                    endpoint_info TEXT,        -- JSON 문자열로 저장 (전체 endpoint 정보)
+                    temperature REAL DEFAULT 0.7,  -- Temperature 설정값
+                    model_name TEXT,           -- 사용된 모델명
+                    provider_name TEXT,        -- 공급자명
+                    user_prompt_template TEXT, -- 실행 당시 사용된 user prompt 템플릿
+                    system_prompt_template TEXT, -- 실행 당시 사용된 system prompt 템플릿
                     timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (version_id) REFERENCES versions (id) ON DELETE CASCADE
                 )
@@ -287,26 +292,49 @@ class PromptManagerDB:
                 result['output'] = json.loads(result['output']) if result['output'] else {}
                 result['endpoint'] = json.loads(result['endpoint_info']) if result['endpoint_info'] else {}
                 
-                # 프론트엔드 호환성을 위해 기존 필드명도 유지
+                # Convert template fields to camelCase for frontend compatibility
+                result['userPromptTemplate'] = result.get('user_prompt_template')
+                result['systemPromptTemplate'] = result.get('system_prompt_template')
+                
+                # Remove snake_case fields
                 result.pop('input_data', None)
                 result.pop('endpoint_info', None)
+                result.pop('user_prompt_template', None)
+                result.pop('system_prompt_template', None)
                 results.append(result)
             
             return results
     
     def add_result(self, version_id: str, input_data: Dict[str, Any], 
-                   output: Dict[str, Any], endpoint_info: Dict[str, Any] = None) -> str:
-        """새 Result 추가"""
+                   output: Dict[str, Any], endpoint_info: Dict[str, Any] = None,
+                   temperature: float = 0.7, user_prompt_template: str = None,
+                   system_prompt_template: str = None) -> str:
+        """새 Result 추가 (실행 시점의 프롬프트 템플릿 포함)"""
         result_id = str(uuid.uuid4())
         input_data_json = json.dumps(input_data, ensure_ascii=False)
         output_json = json.dumps(output, ensure_ascii=False)
         endpoint_info_json = json.dumps(endpoint_info or {}, ensure_ascii=False)
         
+        # endpoint 정보에서 모델명과 공급자명 추출
+        model_name = None
+        provider_name = None
+        
+        if endpoint_info:
+            model_name = (endpoint_info.get('defaultModel') or 
+                         endpoint_info.get('model') or 
+                         endpoint_info.get('modelName'))
+            provider_name = (endpoint_info.get('name') or 
+                           endpoint_info.get('provider') or 
+                           'Unknown')
+        
         with self.get_connection() as conn:
             conn.execute('''
-                INSERT INTO results (id, version_id, input_data, output, endpoint_info)
-                VALUES (?, ?, ?, ?, ?)
-            ''', (result_id, version_id, input_data_json, output_json, endpoint_info_json))
+                INSERT INTO results 
+                (id, version_id, input_data, output, endpoint_info, temperature, model_name, provider_name,
+                 user_prompt_template, system_prompt_template)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (result_id, version_id, input_data_json, output_json, endpoint_info_json, 
+                  temperature, model_name, provider_name, user_prompt_template, system_prompt_template))
             conn.commit()
         
         return result_id
