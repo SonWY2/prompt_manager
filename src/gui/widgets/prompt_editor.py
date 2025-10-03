@@ -816,6 +816,10 @@ class PromptEditor(QWidget):
         self.token_label = None  # 토큰 카운트 표시 라벨
         self.token_thread = None  # 토큰 계산 스레드
         
+        # 번역 기능
+        self.translation_cache = {}  # {cache_key: translated_text}
+        self.translate_thread = None  # 번역 스레드
+        
         self.setup_ui()
         self.setup_connections()
         
@@ -1182,9 +1186,9 @@ class PromptEditor(QWidget):
             }
         """)
         
-        self.save_btn = QPushButton("💾 Save")
-        self.save_btn.clicked.connect(self.save_current_version)
-        self.save_btn.setStyleSheet("""
+        self.translate_btn = QPushButton("🌐 Translate")
+        self.translate_btn.clicked.connect(self.translate_main_prompt)
+        self.translate_btn.setStyleSheet("""
             QPushButton {
                 background-color: #28a745;
                 color: white;
@@ -1201,7 +1205,27 @@ class PromptEditor(QWidget):
             }
         """)
         
+        self.save_btn = QPushButton("💾 Save")
+        self.save_btn.clicked.connect(self.save_current_version)
+        self.save_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #6c757d;
+                color: white;
+                border: 2px solid transparent;
+                padding: 6px 12px;
+                border-radius: 4px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #5a6268;
+            }
+            QPushButton:pressed {
+                background-color: #545b62;
+            }
+        """)
+        
         actions_layout.addWidget(self.preview_btn)
+        actions_layout.addWidget(self.translate_btn)
         actions_layout.addWidget(self.save_btn)
         
         layout.addLayout(actions_layout)
@@ -2201,6 +2225,40 @@ class PromptEditor(QWidget):
         except Exception as e:
             print(f"Error displaying token count: {e}")
     
+    def _protect_placeholders(self, text: str) -> tuple[str, dict]:
+        """
+        Placeholder를 임시 토큰으로 치환하여 보호
+        Returns: (protected_text, placeholder_map)
+        """
+        placeholder_map = {}
+        protected_text = text
+        
+        # {{변수명}} 패턴 추출
+        pattern = r'\{\{([a-zA-Z_][a-zA-Z0-9_-]*)\}\}'
+        matches = list(re.finditer(pattern, text))
+        
+        # 역순으로 치환 (인덱스 유지를 위해)
+        for i, match in enumerate(reversed(matches)):
+            placeholder = match.group(0)  # {{변수명}}
+            token = f"PLACEHOLDER_TOKEN_{len(matches)-1-i}_END"
+            placeholder_map[token] = placeholder
+            
+            # 텍스트에서 placeholder를 토큰으로 치환
+            protected_text = protected_text[:match.start()] + token + protected_text[match.end():]
+        
+        return protected_text, placeholder_map
+    
+    def _restore_placeholders(self, text: str, placeholder_map: dict) -> str:
+        """
+        임시 토큰을 원래 placeholder로 복원
+        """
+        restored_text = text
+        
+        for token, placeholder in placeholder_map.items():
+            restored_text = restored_text.replace(token, placeholder)
+        
+        return restored_text
+    
     def apply_preview_mode(self):
         """Preview 모드 스타일과 내용 적용"""
         try:
@@ -2772,6 +2830,134 @@ class PromptEditor(QWidget):
             
         except Exception as e:
             print(f"Error resetting version selection: {e}")
+    
+    def translate_main_prompt(self):
+        """Main Prompt를 한국어로 번역"""
+        try:
+            # 지연 import로 순환 참조 방지
+            from .result_viewer import TranslateThread, TranslatePopup
+            
+            # Main Prompt 텍스트 가져오기
+            if not hasattr(self, 'main_prompt_edit') or not self.main_prompt_edit:
+                QMessageBox.warning(self, "No Content", "Main Prompt가 없습니다. 버전을 선택해주세요.")
+                return
+            
+            main_prompt_text = self.main_prompt_edit.toPlainText()
+            
+            if not main_prompt_text or not main_prompt_text.strip():
+                QMessageBox.warning(self, "No Content", "번역할 Main Prompt 내용이 없습니다.")
+                return
+            
+            # Active endpoint 확인
+            endpoints_data = self.db_client.get_llm_endpoints()
+            active_endpoint_id = endpoints_data.get('activeEndpointId')
+            
+            if not active_endpoint_id:
+                QMessageBox.warning(
+                    self,
+                    "No LLM Provider",
+                    "번역을 위해서는 활성화된 LLM 공급자가 필요합니다.\n설정에서 LLM 공급자를 설정해주세요."
+                )
+                return
+            
+            # Active endpoint 찾기
+            active_endpoint = None
+            for ep in endpoints_data.get('endpoints', []):
+                if ep.get('id') == active_endpoint_id:
+                    active_endpoint = ep
+                    break
+            
+            if not active_endpoint:
+                QMessageBox.warning(
+                    self,
+                    "Endpoint Not Found",
+                    "활성화된 LLM 엔드포인트를 찾을 수 없습니다."
+                )
+                return
+            
+            # Placeholder 보호
+            protected_text, placeholder_map = self._protect_placeholders(main_prompt_text)
+            
+            # 캐시 키 생성
+            import hashlib
+            cache_key = hashlib.md5(protected_text.encode()).hexdigest()
+            
+            # 캐시 확인
+            if cache_key in self.translation_cache:
+                # 캐시에서 번역 결과 가져오기
+                cached_translation = self.translation_cache[cache_key]
+                # Placeholder 복원
+                final_translation = self._restore_placeholders(cached_translation, placeholder_map)
+                
+                # TranslatePopup으로 결과 표시
+                self.translate_popup = TranslatePopup(main_prompt_text, self)
+                self.translate_popup.show_translation_result(final_translation)
+                self.translate_popup.show()
+                return
+            
+            # 캐시가 없으면 번역 실행
+            # TranslatePopup 생성 및 표시
+            self.translate_popup = TranslatePopup(main_prompt_text, self)
+            self.translate_popup.show_translation_progress()
+            self.translate_popup.show()
+            
+            # 번역 프롬프트에 placeholder 보호 지시 추가
+            translation_instructions = (
+                "아래 내용을 요약이나 생략없이 있는 그대로 `한국어`로만 번역해주세요.\n"
+                "중요: 'PLACEHOLDER_TOKEN_'로 시작하는 특수 토큰들은 절대 번역하지 말고 원문 그대로 유지해주세요.\n\n"
+                f"{protected_text}"
+            )
+            
+            # TranslateThread 시작
+            self.translate_thread = TranslateThread(
+                self.db_client,
+                translation_instructions,
+                active_endpoint
+            )
+            
+            # 시그널 연결 (placeholder_map을 클로저로 캡처)
+            self.translate_thread.finished.connect(
+                lambda translated: self.on_main_prompt_translation_finished(
+                    translated, placeholder_map, cache_key
+                )
+            )
+            self.translate_thread.error.connect(self.on_main_prompt_translation_error)
+            
+            # 번역 시작
+            self.translate_thread.start()
+            
+        except Exception as e:
+            QMessageBox.critical(
+                self,
+                "Translation Error",
+                f"번역 중 예상치 못한 오류가 발생했습니다:\n{str(e)}"
+            )
+    
+    def on_main_prompt_translation_finished(self, translated_text: str, placeholder_map: dict, cache_key: str):
+        """Main Prompt 번역 완료 처리"""
+        try:
+            # Placeholder 복원
+            final_translation = self._restore_placeholders(translated_text, placeholder_map)
+            
+            # 캐시에 저장 (placeholder 복원 전 상태로)
+            self.translation_cache[cache_key] = translated_text
+            
+            # TranslatePopup에 결과 표시
+            if hasattr(self, 'translate_popup') and self.translate_popup:
+                self.translate_popup.show_translation_result(final_translation)
+                
+        except Exception as e:
+            print(f"Error handling main prompt translation completion: {e}")
+            if hasattr(self, 'translate_popup') and self.translate_popup:
+                self.translate_popup.show_translation_error(str(e))
+    
+    def on_main_prompt_translation_error(self, error_message: str):
+        """Main Prompt 번역 오류 처리"""
+        try:
+            if hasattr(self, 'translate_popup') and self.translate_popup:
+                self.translate_popup.show_translation_error(error_message)
+        except Exception as e:
+            print(f"Error handling main prompt translation error: {e}")
     
     def apply_theme(self, is_dark: bool):
         """Apply theme to the widget"""
