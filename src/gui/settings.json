@@ -1,13 +1,10 @@
 {
-  "window_geometry": {
-    "x": 3339,
-    "y": 23,
-    "width": 1920,
-    "height": 1009
-  },
+  "window_geometry": "AdnQywADAAAAAAAA////+AAADW8AAAVvAAAG1wAAAesAAAxOAAAFbgAAAAACAAAADXAAAAAAAAAAFwAADW8AAAVv",
+  "window_state": "000000ff00000000fd0000000000000d700000052300000004000000040000000800000008fc00000000",
+  "is_maximized": true,
   "splitter_sizes": [
-    323,
-    1595
+    578,
+    2860
   ],
   "current_tab": 1
 }

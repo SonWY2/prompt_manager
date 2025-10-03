@@ -5,6 +5,7 @@ Main Window for Prompt Manager PyQt GUI Application
 import sys
 import os
 import json
+import base64
 from pathlib import Path
 from typing import Optional, Dict, Any
 
@@ -426,21 +427,19 @@ class MainWindow(QMainWindow):
             settings_path = Path("src/gui/settings.json")
             settings_path.parent.mkdir(exist_ok=True)
             
-            # Get current position using geometry() for consistent coordinate system
-            geom = self.geometry()
+            # Use PyQt's native saveGeometry() for accurate position/size saving
+            geometry_data = self.saveGeometry().data()
+            geometry_base64 = base64.b64encode(geometry_data).decode('utf-8')
             
             settings = {
-                "window_geometry": {
-                    "x": geom.x(),
-                    "y": geom.y(), 
-                    "width": geom.width(),
-                    "height": geom.height()
-                },
+                "window_geometry": geometry_base64,
+                "window_state": self.saveState().data().hex(),  # Save window state (toolbars, docks, etc.)
+                "is_maximized": self.isMaximized(),
                 "splitter_sizes": self.main_splitter.sizes(),
                 "current_tab": self.main_tabs.currentIndex()
             }
             
-            print(f"Saving window position: x={geom.x()}, y={geom.y()}")  # Debug info
+            print(f"Saving window state: maximized={self.isMaximized()}")  # Debug info
             
             with open(settings_path, 'w') as f:
                 json.dump(settings, f, indent=2)
@@ -457,36 +456,49 @@ class MainWindow(QMainWindow):
                 
             with open(settings_path, 'r') as f:
                 settings = json.load(f)
-                
-            # Restore window geometry with validation
+            
+            # Restore window geometry using PyQt's native restoreGeometry()
             if "window_geometry" in settings:
-                geom = settings["window_geometry"]
-                x, y, width, height = geom["x"], geom["y"], geom["width"], geom["height"]
+                geometry_base64 = settings["window_geometry"]
                 
-                print(f"Loading window position: x={x}, y={y}")  # Debug info
-                
-                # Get screen geometry for validation
-                screen = QApplication.primaryScreen()
-                screen_rect = screen.availableGeometry()
-                
-                # Validate and correct window position
-                min_x = screen_rect.x() - width + 100
-                max_x = screen_rect.right() - 100
-                min_y = screen_rect.y()
-                max_y = screen_rect.bottom() - 100
-                
-                # Clamp position to valid range
-                x = max(min_x, min(x, max_x))
-                y = max(min_y, min(y, max_y))
-                
-                # Ensure reasonable window size
-                width = max(800, min(width, screen_rect.width()))
-                height = max(600, min(height, screen_rect.height()))
-                
-                # Simply set geometry - use same coordinate system for save/load
-                self.setGeometry(x, y, width, height)
-                
-                print(f"Set window position: x={x}, y={y}")  # Debug info
+                # Check if this is the new format (base64 string) or old format (dict)
+                if isinstance(geometry_base64, str):
+                    # New format - decode and restore
+                    geometry_data = base64.b64decode(geometry_base64)
+                    success = self.restoreGeometry(geometry_data)
+                    
+                    print(f"Restoring window geometry: {'success' if success else 'failed'}")
+                    
+                    # Restore maximized state if saved
+                    if "is_maximized" in settings and settings["is_maximized"]:
+                        self.showMaximized()
+                else:
+                    # Old format - use fallback method
+                    geom = geometry_base64
+                    x, y, width, height = geom["x"], geom["y"], geom["width"], geom["height"]
+                    
+                    # Get screen geometry for validation
+                    screen = QApplication.primaryScreen()
+                    screen_rect = screen.availableGeometry()
+                    
+                    # Ensure window is within screen bounds
+                    if (x >= screen_rect.x() - width + 100 and 
+                        x <= screen_rect.right() - 100 and
+                        y >= screen_rect.y() and 
+                        y <= screen_rect.bottom() - 100):
+                        self.setGeometry(x, y, width, height)
+                    else:
+                        print(f"Window position out of bounds, using default")
+                        self.setGeometry(100, 100, 1400, 900)
+            
+            # Restore window state (toolbars, docks, etc.)
+            if "window_state" in settings:
+                try:
+                    state_hex = settings["window_state"]
+                    state_data = bytes.fromhex(state_hex)
+                    self.restoreState(state_data)
+                except:
+                    pass  # Ignore errors in restoring state
                 
             # Restore splitter sizes
             if "splitter_sizes" in settings:
