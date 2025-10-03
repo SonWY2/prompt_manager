@@ -820,6 +820,9 @@ class PromptEditor(QWidget):
         self.translation_cache = {}  # {cache_key: translated_text}
         self.translate_thread = None  # 번역 스레드
         
+        # 변경사항 추적을 위한 원본 데이터 저장
+        self.original_version_data: Optional[Dict[str, Any]] = None
+        
         self.setup_ui()
         self.setup_connections()
         
@@ -1075,7 +1078,7 @@ class PromptEditor(QWidget):
         self.description_edit.setPlainText(version_data.get('description', ''))
         self.description_edit.setMaximumHeight(100)
         self.description_edit.setPlaceholderText("Describe the purpose and usage of this prompt...")
-        self.description_edit.textChanged.connect(self.schedule_auto_save)
+        # 자동저장 비활성화: self.description_edit.textChanged.connect(self.schedule_auto_save)
         # 초기 Edit 모드 스타일 적용
         self.description_edit.setStyleSheet(self.EDIT_MODE_STYLES['description'])
         desc_layout.addWidget(self.description_edit)
@@ -1093,7 +1096,7 @@ class PromptEditor(QWidget):
         self.system_prompt_edit.setPlainText(version_data.get('system_prompt', 'You are a helpful AI Assistant'))
         self.system_prompt_edit.setMaximumHeight(120)
         self.system_prompt_edit.setPlaceholderText("Define AI role and instructions...")
-        self.system_prompt_edit.textChanged.connect(self.schedule_auto_save)
+        # 자동저장 비활성화: self.system_prompt_edit.textChanged.connect(self.schedule_auto_save)
         # 초기 Edit 모드 스타일 적용
         self.system_prompt_edit.setStyleSheet(self.EDIT_MODE_STYLES['system'])
         system_layout.addWidget(self.system_prompt_edit)
@@ -1110,7 +1113,7 @@ class PromptEditor(QWidget):
         self.main_prompt_edit = QTextEdit()
         self.main_prompt_edit.setPlainText(version_data.get('content', ''))
         self.main_prompt_edit.setPlaceholderText("Enter prompt... (Use {{variable_name}} for variables)")
-        self.main_prompt_edit.textChanged.connect(self.schedule_auto_save)
+        # 자동저장 비활성화: self.main_prompt_edit.textChanged.connect(self.schedule_auto_save)
         # 초기 Edit 모드 스타일 적용
         self.main_prompt_edit.setStyleSheet(self.EDIT_MODE_STYLES['main'])
         
@@ -1238,8 +1241,24 @@ class PromptEditor(QWidget):
         
     def set_task_id(self, task_id: str):
         """Set the current task"""
+        # Check for unsaved changes before switching tasks
+        if self.has_unsaved_changes():
+            reply = self.show_unsaved_changes_dialog()
+            
+            if reply == QMessageBox.StandardButton.Save:
+                # Save current version before switching
+                self.save_version(show_message=False)
+            elif reply == QMessageBox.StandardButton.Cancel:
+                # Don't switch tasks
+                return
+            # If Discard, proceed without saving
+        
         self.current_task_id = task_id
         self.current_version_id = None
+        
+        # Clear original version data when switching tasks
+        self.original_version_data = None
+        
         self.load_task_data()
         
     def load_task_data(self):
@@ -1412,6 +1431,13 @@ class PromptEditor(QWidget):
             # Wait for deletion to complete
             from PyQt6.QtWidgets import QApplication
             QApplication.processEvents()
+            
+            # 원본 버전 데이터 저장 (변경사항 감지용)
+            self.original_version_data = {
+                'description': version_data.get('description', ''),
+                'system_prompt': version_data.get('system_prompt', 'You are a helpful AI Assistant'),
+                'content': version_data.get('content', '')
+            }
             
             # Create new prompt content
             prompt_content = self.create_prompt_content(version_data)
@@ -1721,15 +1747,81 @@ class PromptEditor(QWidget):
         
         return item_frame
 
+    def has_unsaved_changes(self) -> bool:
+        """Check if there are unsaved changes"""
+        if not self.original_version_data:
+            return False
+        
+        try:
+            # Get current content from editors
+            current_description = getattr(self, 'description_edit', None)
+            current_system = getattr(self, 'system_prompt_edit', None)
+            current_main = getattr(self, 'main_prompt_edit', None)
+            
+            if not all([current_description, current_system, current_main]):
+                return False
+            
+            # Compare with original
+            return (
+                current_description.toPlainText() != self.original_version_data.get('description', '') or
+                current_system.toPlainText() != self.original_version_data.get('system_prompt', '') or
+                current_main.toPlainText() != self.original_version_data.get('content', '')
+            )
+        except Exception as e:
+            print(f"Error checking unsaved changes: {e}")
+            return False
+    
+    def show_unsaved_changes_dialog(self) -> QMessageBox.StandardButton:
+        """Show dialog asking user about unsaved changes"""
+        msg_box = QMessageBox(self)
+        msg_box.setIcon(QMessageBox.Icon.Warning)
+        msg_box.setWindowTitle("저장하지 않은 변경사항")
+        msg_box.setText("저장하지 않은 변경사항이 있습니다.")
+        msg_box.setInformativeText("변경사항을 저장하시겠습니까?")
+        
+        # Add buttons
+        save_button = msg_box.addButton("저장", QMessageBox.ButtonRole.AcceptRole)
+        discard_button = msg_box.addButton("저장하지 않음", QMessageBox.ButtonRole.DestructiveRole)
+        cancel_button = msg_box.addButton("취소", QMessageBox.ButtonRole.RejectRole)
+        
+        msg_box.setDefaultButton(save_button)
+        msg_box.exec()
+        
+        # Return the clicked button
+        clicked = msg_box.clickedButton()
+        if clicked == save_button:
+            return QMessageBox.StandardButton.Save
+        elif clicked == discard_button:
+            return QMessageBox.StandardButton.Discard
+        else:
+            return QMessageBox.StandardButton.Cancel
+    
     def go_back_to_version_selection(self):
         """Go back to version selection screen"""
         try:
+            # 변경사항 확인
+            if self.has_unsaved_changes():
+                reply = self.show_unsaved_changes_dialog()
+                
+                if reply == QMessageBox.StandardButton.Save:
+                    # 저장 후 이동
+                    self.save_version(show_message=False)
+                elif reply == QMessageBox.StandardButton.Discard:
+                    # 저장하지 않고 이동
+                    pass
+                else:  # Cancel
+                    # 현재 화면 유지
+                    return
+            
             # Exit preview mode if active
             self._exit_preview_mode()
             
             # Clear current version selection
             self.current_version_id = None
             self.version_timeline.set_current_version(None)
+            
+            # 원본 데이터 클리어
+            self.original_version_data = None
             
             # Show version selection state
             if self.versions:
@@ -2401,6 +2493,14 @@ class PromptEditor(QWidget):
                 print(f"Version {self.current_version_id} saved successfully")
                 # Update the current version data in memory (without reloading UI)
                 self._update_current_version_data()
+                
+                # 저장 성공 시 원본 데이터도 업데이트 (자동저장 후 변경사항 감지 초기화)
+                if self.original_version_data:
+                    self.original_version_data = {
+                        'description': updates['description'],
+                        'system_prompt': updates['system_prompt'],
+                        'content': updates['content']
+                    }
             else:
                 if show_message:
                     QMessageBox.warning(self, "Save Error", "Failed to save version to database")
