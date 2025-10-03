@@ -3113,21 +3113,44 @@ class PromptEditor(QWidget):
             self.improvement_popup = TranslatePopup(main_prompt, self)
             self.improvement_popup.setWindowTitle("프롬프트 개선 결과")
             
-            # 팝업 레이아웃 수정
-            if hasattr(self.improvement_popup, 'original_text_widget'):
-                # 원본 텍스트 그룹 박스 제목 변경
-                for widget in self.improvement_popup.findChildren(QGroupBox):
-                    if "원본" in widget.title() or "Original" in widget.title():
-                        widget.setTitle("원본 프롬프트 (Original Prompt)")
-                        break
+            # 팝업 레이아웃 수정 함수
+            def update_popup_labels():
+                try:
+                    # 1. 타이틀 라벨 변경 ("AI 응답 번역 결과" -> "AI 응답 개선 결과")
+                    for label in self.improvement_popup.findChildren(QLabel):
+                        label_text = label.text()
+                        if "AI 응답 번역 결과" in label_text or "번역 결과" in label_text:
+                            label.setText("AI 응답 개선 결과")
+                            print(f"✅ Changed title label: '{label_text}' -> 'AI 응답 개선 결과'")
+                            break
+                    
+                    # 2. 원본 텍스트 그룹 박스 제목 변경
+                    if hasattr(self.improvement_popup, 'original_text_widget'):
+                        for widget in self.improvement_popup.findChildren(QGroupBox):
+                            if "원본" in widget.title() or "Original" in widget.title():
+                                widget.setTitle("원본 프롬프트 (Original Prompt)")
+                                break
+                    
+                    # 3. 개선 결과 그룹 박스 제목 변경
+                    if hasattr(self.improvement_popup, 'translation_text_widget'):
+                        for widget in self.improvement_popup.findChildren(QGroupBox):
+                            if "번역" in widget.title() or "Translation" in widget.title():
+                                widget.setTitle("개선된 프롬프트 (Improved Prompt)")
+                                break
+                        
+                        # 초기 텍스트를 "개선 중..."으로 변경
+                        self.improvement_popup.translation_text_widget.setPlainText("개선 중...")
+                    
+                    # 4. 복사 버튼 텍스트 변경
+                    if hasattr(self.improvement_popup, 'copy_button'):
+                        self.improvement_popup.copy_button.setText("📋 개선 결과 복사")
+                except Exception as e:
+                    print(f"Error updating popup labels: {e}")
             
-            if hasattr(self.improvement_popup, 'translation_text_widget'):
-                # 번역 결과 그룹 박스 제목 변경
-                for widget in self.improvement_popup.findChildren(QGroupBox):
-                    if "번역" in widget.title() or "Translation" in widget.title():
-                        widget.setTitle("개선된 프롬프트 (Improved Prompt)")
-                        break
+            # QTimer로 지연 실행 (팝업이 완전히 생성된 후 실행)
+            QTimer.singleShot(100, update_popup_labels)
             
+            # 모든 텍스트 변경 후 팝업 표시
             self.improvement_popup.show_translation_progress()
             self.improvement_popup.show()
             

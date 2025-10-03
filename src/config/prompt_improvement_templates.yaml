@@ -106,6 +106,391 @@ improvement_methods:
       
       개선된 프롬프트만 출력해주세요 (설명 없이):
 
+  - id: "xml_formatting"
+    name: "XML 포맷팅"
+    description: "프롬프트를 LLM이 이해하기 쉬운 XML 구조로 변환합니다"
+    icon: "📐"
+    template: |
+      아래 프롬프트를 XML 형식으로 구조화하여 LLM이 더 명확하게 이해할 수 있도록 변환해주세요.
+      
+      **중요 지침:**
+      1. 모든 내용을 빠짐없이 포함해야 합니다 (요약하거나 생략하지 마세요)
+      2. 의미있는 XML 태그로 각 섹션을 구분하세요
+      3. 계층적 구조를 사용하여 정보를 체계적으로 정리하세요
+      4. {{변수명}} 형식의 플레이스홀더는 절대 변경하지 마세요
+      5. 태그 이름은 영문으로 작성하되, 내용은 원본 언어를 유지하세요
+      
+      **권장 XML 구조:**
+      ```xml
+      <prompt>
+        <role>AI의 역할 정의</role>
+        <context>작업 배경이나 상황</context>
+        <instruction>
+          <step>단계 1</step>
+          <step>단계 2</step>
+        </instruction>
+        <constraints>제약사항</constraints>
+        <output_format>출력 형식</output_format>
+        <examples>
+          <example>예시 1</example>
+        </examples>
+      </prompt>
+      ```
+      
+      원본 프롬프트:
+      {main_prompt}
+      
+      XML로 구조화된 프롬프트만 출력해주세요 (추가 설명 없이):
+
+  - id: "translate_to_english"
+    name: "영문 번역"
+    description: "한글 프롬프트를 고품질 영어로 번역합니다"
+    icon: "🌍"
+    template: |
+      아래 프롬프트를 자연스럽고 전문적인 영어로 번역해주세요.
+      
+      **번역 지침:**
+      1. 원문의 의미와 뉘앙스를 정확하게 보존하세요
+      2. 전문적이고 명확한 영어 표현을 사용하세요
+      3. LLM 프롬프트로서 효과적이도록 자연스럽게 번역하세요
+      4. {{변수명}} 형식의 플레이스홀더는 절대 변경하지 말고 그대로 유지하세요
+      5. PLACEHOLDER_TOKEN_ 같은 특수 토큰도 원본 그대로 유지하세요
+      6. 코드 블록, 변수명, 함수명 등은 번역하지 마세요
+      
+      **번역 품질 기준:**
+      - 명확성: 모호함 없이 정확한 의미 전달
+      - 자연스러움: 원어민이 작성한 것처럼 자연스러운 문장
+      - 전문성: 해당 분야의 전문 용어를 적절히 사용
+      - 완전성: 모든 내용을 빠짐없이 번역
+      
+      원본 프롬프트:
+      {main_prompt}
+      
+      영어로 번역된 프롬프트만 출력해주세요 (추가 설명 없이):
+
+  - id: "advanced_26_principles"
+    name: "고급 원칙 기반 개선 (26 Principles)"
+    description: "26가지 LLM 프롬프팅 원칙을 기반으로 체계적으로 프롬프트를 분석하고 개선합니다 (최대 57.7% 품질 향상)"
+    icon: "🎓"
+    template: |
+      # Advanced Prompt Enhancement Meta-Prompt
+
+      You are an expert in LLM prompt engineering with deep knowledge of the 26 principles from "Principled Instructions Are All You Need for Questioning LLaMA-1/2, GPT-3.5/4" (Bsharat et al., 2023). Your task is to analyze and enhance prompts to achieve up to 57.7% quality improvement and 36.4% correctness improvement.
+
+      ## Input Prompt
+      ```
+      {main_prompt}
+      ```
+
+      ## Critical Instruction: Language Preservation
+      **IMPORTANT: Detect the language of the input prompt and provide the enhanced prompt in THE SAME LANGUAGE. If the input is in Korean, output in Korean. If in English, output in English. Maintain the original language throughout the enhanced prompt.**
+
+      ---
+
+      ## Enhancement Process
+
+      ### Phase 1: Comprehensive Analysis
+
+      Systematically evaluate the current prompt across five dimensions:
+
+      #### 1.1 Prompt Structure and Clarity
+      Assess:
+      - [ ] Is the intended audience explicitly specified?
+      - [ ] Does it use affirmative directives ("do") vs. negative language ("don't")?
+      - [ ] Is structured formatting used (###Instruction###, ###Example###, ###Question###)?
+      - [ ] Are delimiters appropriately employed to separate sections?
+      - [ ] Does it use output primers (ending with the start of desired output)?
+      - [ ] Are leading words like "think step by step" present where needed?
+
+      #### 1.2 Specificity and Information
+      Evaluate:
+      - [ ] Does it include few-shot examples when beneficial?
+      - [ ] Is the explanation level clearly specified (expert/beginner/child-friendly)?
+      - [ ] Does it address potential biases explicitly?
+      - [ ] Are requirements stated in concrete, measurable terms?
+      - [ ] Are keywords, regulations, or constraints clearly specified?
+      - [ ] Is the desired output format explicitly described?
+
+      #### 1.3 User Interaction and Engagement
+      Check:
+      - [ ] Should the model ask clarifying questions before responding?
+      - [ ] Would an interactive, multi-turn approach be more effective?
+      - [ ] Is there opportunity for the model to elicit more precise requirements?
+
+      #### 1.4 Content and Language Style
+      Review:
+      - [ ] Are there unnecessary polite phrases ("please", "thank you", "if you don't mind")?
+      - [ ] Would imperative phrases ("Your task is", "You MUST") add clarity?
+      - [ ] Would penalties or incentives ("I'm going to tip $xxx") improve performance?
+      - [ ] Is a specific role assignment beneficial?
+      - [ ] Should the response tone be specified (formal/casual/technical)?
+      - [ ] Are there words or phrases that should be repeated for emphasis?
+
+      #### 1.5 Complex Tasks and Reasoning
+      Determine:
+      - [ ] Should the task be broken into simpler sequential steps?
+      - [ ] Would Chain-of-Thought (CoT) reasoning improve the output?
+      - [ ] For coding tasks, are multi-file generation instructions needed?
+      - [ ] Does the task require combining CoT with few-shot examples?
+      - [ ] Should the model be instructed to show intermediate reasoning?
+
+      ---
+
+      ### Phase 2: Principle-Based Enhancement
+
+      Apply relevant principles strategically. **Do not force all principles**—select based on context:
+
+      #### Category A: Prompt Structure and Clarity
+
+      **Principle 2 - Audience Integration**
+      ```
+      Integrate the intended audience: "The audience is [an expert/a beginner/an 11-year-old]"
+      ```
+      *Apply when: Output complexity needs calibration*
+
+      **Principle 4 - Affirmative Directives**
+      ```
+      Use "do" instead of "don't". Replace "Don't be vague" with "Be specific and concrete"
+      ```
+      *Apply when: Current prompt contains negative instructions*
+
+      **Principle 8 - Structured Formatting**
+      ```
+      ###Instruction###
+      [Clear directive]
+
+      ###Example###
+      [Demonstrative examples]
+
+      ###Question###
+      [Specific query]
+
+      ###Context###
+      [Relevant background]
+      ```
+      *Apply when: Complex multi-part prompts need organization*
+
+      **Principle 12 - Leading Words**
+      ```
+      Add: "Let's think step by step", "Let's work through this systematically", "Let's break this down"
+      ```
+      *Apply when: Tasks require reasoning or problem-solving*
+
+      **Principle 17 - Delimiters**
+      ```
+      Use delimiters: """ for text, ``` for code, --- for sections, <INPUT> </INPUT> for data
+      ```
+      *Apply when: Multiple distinct elements need separation*
+
+      **Principle 20 - Output Primers**
+      ```
+      End prompt with: "Here's the detailed analysis:\n1."
+      ```
+      *Apply when: You want to control output format from the start*
+
+      #### Category B: Specificity and Information
+
+      **Principle 5 - Clarity Requests**
+      ```
+      • "Explain [topic] in simple terms"
+      • "Explain to me like I'm 11 years old"  
+      • "Explain as if I'm a beginner in [field]"
+      • "Write using simple English like explaining to a 5-year-old"
+      ```
+      *Apply when: Simplification or specific explanation level needed*
+
+      **Principle 7 - Few-Shot Prompting**
+      ```
+      Provide 2-5 examples showing input-output pairs
+      ```
+      *Apply when: Task format is unclear or needs demonstration*
+
+      **Principle 13 - Bias Prevention**
+      ```
+      Add: "Ensure your answer is unbiased and avoids relying on stereotypes"
+      ```
+      *Apply when: Topic is sensitive or prone to bias*
+
+      **Principle 19 - Chain-of-Thought + Few-Shot**
+      ```
+      Combine examples that show reasoning process with few-shot demonstrations
+      ```
+      *Apply when: Complex reasoning tasks need both guidance and examples*
+
+      **Principle 25 - Clear Requirements**
+      ```
+      Explicitly state: keywords to include, length constraints, format requirements, tone specifications
+      ```
+      *Apply when: Output has specific requirements*
+
+      **Principle 26 - Style Matching**
+      ```
+      "Use the same language/style/tone as the provided [paragraph/example]"
+      ```
+      *Apply when: Consistency with existing content is needed*
+
+      #### Category C: User Interaction and Engagement
+
+      **Principle 14 - Question Elicitation**
+      ```
+      "From now on, ask me questions to gather all necessary information before providing your answer"
+      ```
+      *Apply when: Requirements are unclear or task is exploratory*
+
+      **Principle 15 - Interactive Teaching**
+      ```
+      "Teach me [topic] and include a test at the end. Let me know if my answers are correct without providing answers beforehand"
+      ```
+      *Apply when: Learning or comprehension verification is the goal*
+
+      #### Category D: Content and Language Style
+
+      **Principle 1 - Conciseness**
+      ```
+      Remove: "please", "if you don't mind", "thank you", "I would like to", "could you"
+      Replace with: Direct imperatives
+      ```
+      *Apply when: Efficiency and directness are priorities*
+
+      **Principle 6 - Incentive**
+      ```
+      "I'm going to tip $300 for a better solution!"
+      ```
+      *Apply when: Maximum quality is critical (use judiciously)*
+
+      **Principle 9 - Imperative Phrases**
+      ```
+      Add: "Your task is to...", "You MUST ensure that..."
+      ```
+      *Apply when: Emphasizing requirements or constraints*
+
+      **Principle 10 - Penalties**
+      ```
+      "You will be penalized for [specific unwanted behavior]"
+      ```
+      *Apply when: Preventing specific failure modes*
+
+      **Principle 11 - Natural Response**
+      ```
+      "Answer in a natural, human-like manner"
+      ```
+      *Apply when: Conversational or approachable tone is desired*
+
+      **Principle 16 - Role Assignment**
+      ```
+      "You are a [expert/teacher/analyst/critic] specializing in [field]"
+      ```
+      *Apply when: Domain expertise or specific perspective is needed*
+
+      **Principle 18 - Repetition for Emphasis**
+      ```
+      Repeat critical keywords or requirements 2-3 times throughout the prompt
+      ```
+      *Apply when: Specific constraints must not be violated*
+
+      #### Category E: Complex Tasks and Coding
+
+      **Principle 3 - Task Decomposition**
+      ```
+      Break into: "First, do X. Then, do Y. Finally, do Z."
+      Or use interactive multi-turn approach
+      ```
+      *Apply when: Task is complex with multiple sub-goals*
+
+      **Principle 21 - Detailed Writing**
+      ```
+      "Write a detailed [essay/analysis/report] on [topic] by adding all necessary information including [specific aspects]"
+      ```
+      *Apply when: Comprehensive coverage is needed*
+
+      **Principle 22 - Style-Preserving Revision**
+      ```
+      "Revise the text while maintaining the original writing style, ensuring formal paragraphs remain formal"
+      ```
+      *Apply when: Editing existing content*
+
+      **Principle 23 - Multi-File Code Generation**
+      ```
+      "When generating code spanning multiple files, create a [language] script to automatically create or modify the necessary files"
+      ```
+      *Apply when: Complex coding projects are involved*
+
+      **Principle 24 - Continuation**
+      ```
+      "I'm providing the beginning: [text]. Continue it while keeping the flow consistent"
+      ```
+      *Apply when: Extending existing content*
+
+      ---
+
+      ### Phase 3: Generate Enhanced Prompt
+
+      **Remember: Output in the SAME LANGUAGE as the input prompt.**
+
+      Create the enhanced prompt following this structure:
+
+      ```
+      [ENHANCED PROMPT IN THE SAME LANGUAGE AS INPUT]
+
+      <Include relevant principles applied above>
+      ```
+
+      ---
+
+      ### Phase 4: Enhancement Summary
+
+      Provide a concise summary:
+
+      #### Applied Principles
+      List only the principles that were actually applied:
+      - **Principle [#]**: [How it was applied and why]
+      - **Principle [#]**: [How it was applied and why]
+
+      #### Key Improvements
+      1. **[Improvement Category]**: [Specific change made]
+      2. **[Improvement Category]**: [Specific change made]
+      3. **[Improvement Category]**: [Specific change made]
+
+      #### Expected Impact
+      - **Quality**: [Expected improvement in response quality]
+      - **Correctness**: [Expected improvement in accuracy]
+      - **Clarity**: [Expected improvement in instruction clarity]
+
+      #### Warnings/Considerations
+      - [Any potential trade-offs or considerations]
+      - [Scenarios where this prompt might need further refinement]
+
+      ---
+
+      ## Meta-Guidelines for Enhancement
+
+      ### DO:
+      ✓ Prioritize principles that address the specific weaknesses of the input prompt
+      ✓ Maintain the core intent and goal of the original prompt  
+      ✓ Balance conciseness with necessary detail
+      ✓ Consider the model size (larger models benefit more from advanced principles)
+      ✓ Test if each principle actually adds value
+      ✓ Preserve the original language of the input prompt
+
+      ### DON'T:
+      ✗ Apply all 26 principles indiscriminately
+      ✗ Make the prompt overly complex
+      ✗ Change the fundamental goal of the original prompt
+      ✗ Add unnecessary verbosity in the name of "enhancement"
+      ✗ Forget that simpler is often better for straightforward tasks
+      ✗ Change the language of the output prompt
+
+      ---
+
+      ## Now Execute
+
+      Analyze the input prompt and generate:
+      1. **Analysis**: Brief assessment of current prompt's strengths and weaknesses
+      2. **Enhanced Prompt**: Improved version **IN THE SAME LANGUAGE AS INPUT**
+      3. **Summary**: Clear explanation of changes and expected impact
+
+      Begin your analysis.
+
 # Custom prompt template
 custom_template:
   id: "custom"
