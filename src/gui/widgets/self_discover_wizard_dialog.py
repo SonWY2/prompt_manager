@@ -263,118 +263,234 @@ class SelfDiscoverWizardDialog(QDialog):
         layout.addLayout(button_layout)
         
     def create_progress_indicator(self) -> QWidget:
-        """진행 표시 인디케이터 생성"""
-        frame = QFrame()
-        frame.setStyleSheet("""
-            QFrame {
-                background-color: #f8f9fa;
-                border: 1px solid #dee2e6;
-                border-radius: 8px;
-                padding: 15px;
-            }
-        """)
+        """진행 표시 인디케이터 생성 - 초간결 디자인 (테두리 없음)"""
+        container = QWidget()
+        container.setStyleSheet("background-color: transparent;")
         
-        layout = QHBoxLayout(frame)
-        layout.setContentsMargins(10, 10, 10, 10)
-        layout.setSpacing(10)
+        main_layout = QVBoxLayout(container)
+        main_layout.setContentsMargins(20, 15, 20, 15)
+        main_layout.setSpacing(8)
         
-        stages = [
-            ("1", "SELECT"),
-            ("2", "ADAPT"),
-            ("3", "IMPLEMENT"),
-            ("4", "STAGE 2")
-        ]
+        # 아이콘 + 연결선 레이아웃 (상단)
+        icons_layout = QHBoxLayout()
+        icons_layout.setSpacing(0)
+        icons_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
         
-        self.stage_labels = []
+        self.stage_circles = []
+        self.stage_connectors = []
         
-        for i, (num, name) in enumerate(stages):
-            if i > 0:
-                # 화살표
-                arrow_label = QLabel("→")
-                arrow_label.setStyleSheet("color: #ced4da; font-size: 16px; font-weight: bold;")
-                layout.addWidget(arrow_label)
-            
-            # 단계 라벨
-            stage_label = QLabel(f"{num}. {name}")
-            stage_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            stage_label.setStyleSheet("""
+        for i in range(4):
+            # 아이콘 (36x36px - 완료/진행/예정)
+            icon_label = QLabel("○")
+            icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            icon_label.setFixedSize(36, 36)
+            icon_label.setStyleSheet("""
                 QLabel {
-                    background-color: white;
-                    border: 2px solid #dee2e6;
-                    border-radius: 6px;
-                    padding: 8px 12px;
-                    font-size: 11px;
-                    font-weight: 600;
-                    color: #6c757d;
-                    min-width: 80px;
+                    font-size: 28px;
+                    color: #dee2e6;
+                    background: transparent;
+                    border: none;
                 }
             """)
-            self.stage_labels.append(stage_label)
-            layout.addWidget(stage_label)
+            self.stage_circles.append(icon_label)
+            icons_layout.addWidget(icon_label)
+            
+            # 연결선 (마지막 제외)
+            if i < 3:
+                line_label = QLabel("─────")
+                line_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                line_label.setFixedWidth(80)
+                line_label.setStyleSheet("""
+                    QLabel {
+                        font-size: 16px;
+                        color: #dee2e6;
+                        background: transparent;
+                        border: none;
+                        letter-spacing: -2px;
+                    }
+                """)
+                self.stage_connectors.append(line_label)
+                icons_layout.addWidget(line_label)
+        
+        main_layout.addLayout(icons_layout)
+        
+        # 텍스트 레이아웃 (하단 - 2줄)
+        text_container = QWidget()
+        text_container.setStyleSheet("background: transparent;")
+        text_layout = QHBoxLayout(text_container)
+        text_layout.setSpacing(0)
+        text_layout.setContentsMargins(0, 0, 0, 0)
+        text_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        
+        self.stage_name_labels = []
+        self.stage_korean_labels = []
+        
+        all_steps = [
+            ("SELECT", "선택"),
+            ("ADAPT", "구체화"),
+            ("IMPLEMENT", "구조화"),
+            ("STAGE 2", "개선")
+        ]
+        
+        for i, (name, korean) in enumerate(all_steps):
+            # 텍스트 컨테이너 (영문 + 한글)
+            text_widget = QWidget()
+            text_widget.setFixedWidth(116)  # 36 (아이콘) + 80 (연결선)
+            text_vlayout = QVBoxLayout(text_widget)
+            text_vlayout.setContentsMargins(0, 0, 0, 0)
+            text_vlayout.setSpacing(2)
+            
+            # 영문
+            name_label = QLabel(name)
+            name_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            name_label.setStyleSheet("""
+                QLabel {
+                    font-size: 12px;
+                    font-weight: 600;
+                    color: #6c757d;
+                    background: transparent;
+                    border: none;
+                }
+            """)
+            self.stage_name_labels.append(name_label)
+            text_vlayout.addWidget(name_label)
+            
+            # 한글
+            korean_label = QLabel(korean)
+            korean_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            korean_label.setStyleSheet("""
+                QLabel {
+                    font-size: 10px;
+                    color: #adb5bd;
+                    background: transparent;
+                    border: none;
+                }
+            """)
+            self.stage_korean_labels.append(korean_label)
+            text_vlayout.addWidget(korean_label)
+            
+            text_layout.addWidget(text_widget)
+        
+        main_layout.addWidget(text_container)
+        
+        # 진행률 바는 제거 (아이콘만으로 충분히 직관적)
+        self.progress_bar = None
+        self.progress_text_label = None
         
         # 첫 단계 활성화
         self.update_progress_indicator()
         
-        return frame
+        return container
         
     def update_progress_indicator(self):
-        """진행 표시 업데이트"""
-        stages = [
-            ("1", "SELECT"),
-            ("2", "ADAPT"),
-            ("3", "IMPLEMENT"),
-            ("4", "STAGE 2")
-        ]
-        
-        for i, label in enumerate(self.stage_labels):
-            if i < len(stages):
-                num, name = stages[i]
+        """진행 표시 업데이트 - 초간결 버전 (✓, ●, ○)"""
+        # 각 단계 아이콘 및 텍스트 스타일 업데이트
+        for i in range(len(self.stage_circles)):
+            icon = self.stage_circles[i]
+            name_label = self.stage_name_labels[i]
+            korean_label = self.stage_korean_labels[i]
+            
+            if i < len(self.stage_completed) and self.stage_completed[i]:
+                # 완료된 단계 - 체크마크 (✓)
+                icon.setText("✓")
+                icon.setStyleSheet("""
+                    QLabel {
+                        font-size: 32px;
+                        color: #2196F3;
+                        background: transparent;
+                        border: none;
+                        font-weight: bold;
+                    }
+                """)
+                name_label.setStyleSheet("""
+                    QLabel {
+                        font-size: 12px;
+                        font-weight: 600;
+                        color: #2196F3;
+                        background: transparent;
+                        border: none;
+                    }
+                """)
+                korean_label.setStyleSheet("""
+                    QLabel {
+                        font-size: 10px;
+                        color: #2196F3;
+                        background: transparent;
+                        border: none;
+                    }
+                """)
                 
-                if i < len(self.stage_completed) and self.stage_completed[i]:
-                    # 완료된 단계 - 체크마크 표시
-                    label.setText(f"✓ {name}")
-                    label.setStyleSheet("""
+                # 연결선을 굵은 선(═══)으로
+                if i < len(self.stage_connectors):
+                    self.stage_connectors[i].setText("═════")
+                    self.stage_connectors[i].setStyleSheet("""
                         QLabel {
-                            background-color: #28a745;
-                            border: 2px solid #28a745;
-                            border-radius: 6px;
-                            padding: 8px 12px;
-                            font-size: 11px;
-                            font-weight: 600;
-                            color: white;
-                            min-width: 80px;
+                            font-size: 16px;
+                            color: #2196F3;
+                            background: transparent;
+                            border: none;
+                            letter-spacing: -2px;
+                            font-weight: bold;
                         }
                     """)
-                elif i == self.current_stage:
-                    # 현재 단계
-                    label.setText(f"{num}. {name}")
-                    label.setStyleSheet("""
-                        QLabel {
-                            background-color: #3498db;
-                            border: 2px solid #3498db;
-                            border-radius: 6px;
-                            padding: 8px 12px;
-                            font-size: 11px;
-                            font-weight: 600;
-                            color: white;
-                            min-width: 80px;
-                        }
-                    """)
-                else:
-                    # 대기 단계
-                    label.setText(f"{num}. {name}")
-                    label.setStyleSheet("""
-                        QLabel {
-                            background-color: white;
-                            border: 2px solid #dee2e6;
-                            border-radius: 6px;
-                            padding: 8px 12px;
-                            font-size: 11px;
-                            font-weight: 600;
-                            color: #6c757d;
-                            min-width: 80px;
-                        }
-                    """)
+                    
+            elif i == self.current_stage:
+                # 현재 진행중인 단계 - 채워진 원 (●)
+                icon.setText("●")
+                icon.setStyleSheet("""
+                    QLabel {
+                        font-size: 32px;
+                        color: #2196F3;
+                        background: transparent;
+                        border: none;
+                        font-weight: bold;
+                    }
+                """)
+                name_label.setStyleSheet("""
+                    QLabel {
+                        font-size: 12px;
+                        font-weight: 600;
+                        color: #2196F3;
+                        background: transparent;
+                        border: none;
+                    }
+                """)
+                korean_label.setStyleSheet("""
+                    QLabel {
+                        font-size: 10px;
+                        color: #2196F3;
+                        background: transparent;
+                        border: none;
+                    }
+                """)
+            else:
+                # 대기 중인 단계 - 빈 원 (○)
+                icon.setText("○")
+                icon.setStyleSheet("""
+                    QLabel {
+                        font-size: 28px;
+                        color: #dee2e6;
+                        background: transparent;
+                        border: none;
+                    }
+                """)
+                name_label.setStyleSheet("""
+                    QLabel {
+                        font-size: 12px;
+                        font-weight: 600;
+                        color: #6c757d;
+                        background: transparent;
+                        border: none;
+                    }
+                """)
+                korean_label.setStyleSheet("""
+                    QLabel {
+                        font-size: 10px;
+                        color: #adb5bd;
+                        background: transparent;
+                        border: none;
+                    }
+                """)
                 
     def create_stage_widget(self, title: str, description: str, loading_text: str) -> QWidget:
         """단계별 위젯 생성"""
@@ -582,12 +698,9 @@ class SelfDiscoverWizardDialog(QDialog):
         # 완료 플래그 설정
         self.stage_completed[0] = True
         
-        self.current_stage = 1
-        self.stacked_widget.setCurrentIndex(self.current_stage)
+        # 현재 단계에 머물러서 결과 확인 가능
         self.update_progress_indicator()
         self.update_buttons()
-        
-        self.next_button.setText("다음 ▶")
         
     def on_adapt_completed(self, result: str):
         """ADAPT 단계 완료"""
@@ -598,8 +711,7 @@ class SelfDiscoverWizardDialog(QDialog):
         # 완료 플래그 설정
         self.stage_completed[1] = True
         
-        self.current_stage = 2
-        self.stacked_widget.setCurrentIndex(self.current_stage)
+        # 현재 단계에 머물러서 결과 확인 가능
         self.update_progress_indicator()
         self.update_buttons()
         
@@ -612,8 +724,7 @@ class SelfDiscoverWizardDialog(QDialog):
         # 완료 플래그 설정
         self.stage_completed[2] = True
         
-        self.current_stage = 3
-        self.stacked_widget.setCurrentIndex(self.current_stage)
+        # 현재 단계에 머물러서 결과 확인 가능
         self.update_progress_indicator()
         self.update_buttons()
         
@@ -626,7 +737,7 @@ class SelfDiscoverWizardDialog(QDialog):
         # 완료 플래그 설정
         self.stage_completed[3] = True
         
-        self.current_stage = 4
+        # 버튼을 "완료"로 변경
         self.update_buttons()
         
         self.next_button.setText("완료 ✓")
