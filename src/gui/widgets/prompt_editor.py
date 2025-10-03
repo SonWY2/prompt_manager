@@ -1190,7 +1190,7 @@ class PromptEditor(QWidget):
         """)
         
         self.translate_btn = QPushButton("🌐 Translate")
-        self.translate_btn.clicked.connect(self.translate_main_prompt)
+        self.translate_btn.clicked.connect(self.translate_prompts)
         self.translate_btn.setStyleSheet("""
             QPushButton {
                 background-color: #28a745;
@@ -2931,21 +2931,28 @@ class PromptEditor(QWidget):
         except Exception as e:
             print(f"Error resetting version selection: {e}")
     
-    def translate_main_prompt(self):
-        """Main Prompt를 한국어로 번역"""
+    def translate_prompts(self):
+        """System Prompt와 Main Prompt를 한국어로 번역"""
         try:
             # 지연 import로 순환 참조 방지
             from .result_viewer import TranslateThread, TranslatePopup
             
-            # Main Prompt 텍스트 가져오기
-            if not hasattr(self, 'main_prompt_edit') or not self.main_prompt_edit:
-                QMessageBox.warning(self, "No Content", "Main Prompt가 없습니다. 버전을 선택해주세요.")
+            # System Prompt와 Main Prompt 텍스트 가져오기
+            if not hasattr(self, 'system_prompt_edit') or not self.system_prompt_edit:
+                QMessageBox.warning(self, "No Content", "프롬프트가 없습니다. 버전을 선택해주세요.")
                 return
             
+            if not hasattr(self, 'main_prompt_edit') or not self.main_prompt_edit:
+                QMessageBox.warning(self, "No Content", "프롬프트가 없습니다. 버전을 선택해주세요.")
+                return
+            
+            system_prompt_text = self.system_prompt_edit.toPlainText()
             main_prompt_text = self.main_prompt_edit.toPlainText()
             
-            if not main_prompt_text or not main_prompt_text.strip():
-                QMessageBox.warning(self, "No Content", "번역할 Main Prompt 내용이 없습니다.")
+            # 둘 다 비어있으면 경고
+            if (not system_prompt_text or not system_prompt_text.strip()) and \
+               (not main_prompt_text or not main_prompt_text.strip()):
+                QMessageBox.warning(self, "No Content", "번역할 프롬프트 내용이 없습니다.")
                 return
             
             # Active endpoint 확인
@@ -2975,38 +2982,94 @@ class PromptEditor(QWidget):
                 )
                 return
             
-            # Placeholder 보호
-            protected_text, placeholder_map = self._protect_placeholders(main_prompt_text)
+            # 각 프롬프트의 Placeholder 보호
+            protected_system, system_placeholder_map = self._protect_placeholders(system_prompt_text)
+            protected_main, main_placeholder_map = self._protect_placeholders(main_prompt_text)
+            
+            # 합쳐진 텍스트 생성 (구분선 포함)
+            separator = "\n\n====================\n\n"
+            combined_original = f"[System Prompt]\n{system_prompt_text}{separator}[Main Prompt]\n{main_prompt_text}"
+            combined_protected = f"[System Prompt]\n{protected_system}{separator}[Main Prompt]\n{protected_main}"
             
             # 캐시 키 생성
             import hashlib
-            cache_key = hashlib.md5(protected_text.encode()).hexdigest()
+            cache_key = hashlib.md5(combined_protected.encode()).hexdigest()
             
             # 캐시 확인
             if cache_key in self.translation_cache:
                 # 캐시에서 번역 결과 가져오기
                 cached_translation = self.translation_cache[cache_key]
-                # Placeholder 복원
-                final_translation = self._restore_placeholders(cached_translation, placeholder_map)
+                # Placeholder 복원 (두 부분으로 나누어)
+                final_translation = self._restore_combined_placeholders(
+                    cached_translation, 
+                    system_placeholder_map, 
+                    main_placeholder_map,
+                    separator
+                )
                 
                 # TranslatePopup으로 결과 표시
-                self.translate_popup = TranslatePopup(main_prompt_text, self)
+                self.translate_popup = TranslatePopup(combined_original, self)
                 self.translate_popup.show_translation_result(final_translation)
                 self.translate_popup.show()
                 return
             
             # 캐시가 없으면 번역 실행
             # TranslatePopup 생성 및 표시
-            self.translate_popup = TranslatePopup(main_prompt_text, self)
+            self.translate_popup = TranslatePopup(combined_original, self)
             self.translate_popup.show_translation_progress()
             self.translate_popup.show()
             
             # 번역 프롬프트에 placeholder 보호 지시 추가
             translation_instructions = (
                 "아래 내용을 요약이나 생략없이 있는 그대로 `한국어`로만 번역해주세요.\n"
-                "중요: 'PLACEHOLDER_TOKEN_'로 시작하는 특수 토큰들은 절대 번역하지 말고 원문 그대로 유지해주세요.\n\n"
-                f"{protected_text}"
+                "중요: 'PLACEHOLDER_TOKEN_'로 시작하는 특수 토큰들과 [System Prompt], [Main Prompt], '====================' 구분선은 절대 번역하지 말고 원문 그대로 유지해주세요.\n\n"
+                f"{combined_protected}"
             )
+            
+            translation_instructions = f"""
+# 번역 지시사항
+
+아래 제공된 텍스트를 **한국어로 정확하게 번역**해주세요.
+
+## 핵심 원칙
+
+1. **완전성**: 모든 내용을 빠짐없이 번역하세요. 어떤 문장, 단어, 구두점도 생략하거나 요약하지 마세요.
+
+2. **정확성**: 원문의 의미, 뉘앙스, 어조를 정확하게 보존하세요.
+
+3. **자연스러움**: 한국어로 자연스럽게 읽히도록 번역하되, 원문의 구조와 의미를 유지하세요.
+
+## 절대 번역하지 말아야 할 요소
+
+다음 요소들은 **반드시 원문 그대로** 유지해주세요:
+
+- `PLACEHOLDER_TOKEN_`로 시작하는 모든 특수 토큰
+- `[System Prompt]`, `[Main Prompt]` 등의 대괄호 표기
+- `====================` 형태의 구분선
+- 코드 블록 내의 변수명, 함수명, 키워드
+
+## 예시
+
+**입력:**
+```
+[System Prompt]
+This is a sample text with PLACEHOLDER_TOKEN_123.
+====================
+```
+
+**올바른 출력:**
+```
+[System Prompt]
+이것은 PLACEHOLDER_TOKEN_123이 포함된 샘플 텍스트입니다.
+====================
+```
+
+---
+  
+# 입력:
+{combined_protected}           
+            """.strip()
+            print(translation_instructions)
             
             # TranslateThread 시작
             self.translate_thread = TranslateThread(
@@ -3015,13 +3078,13 @@ class PromptEditor(QWidget):
                 active_endpoint
             )
             
-            # 시그널 연결 (placeholder_map을 클로저로 캡처)
+            # 시그널 연결 (placeholder_map들을 클로저로 캡처)
             self.translate_thread.finished.connect(
-                lambda translated: self.on_main_prompt_translation_finished(
-                    translated, placeholder_map, cache_key
+                lambda translated: self.on_prompts_translation_finished(
+                    translated, system_placeholder_map, main_placeholder_map, separator, cache_key
                 )
             )
-            self.translate_thread.error.connect(self.on_main_prompt_translation_error)
+            self.translate_thread.error.connect(self.on_prompts_translation_error)
             
             # 번역 시작
             self.translate_thread.start()
@@ -3033,11 +3096,39 @@ class PromptEditor(QWidget):
                 f"번역 중 예상치 못한 오류가 발생했습니다:\n{str(e)}"
             )
     
-    def on_main_prompt_translation_finished(self, translated_text: str, placeholder_map: dict, cache_key: str):
-        """Main Prompt 번역 완료 처리"""
+    def _restore_combined_placeholders(self, text: str, system_map: dict, main_map: dict, separator: str) -> str:
+        """
+        합쳐진 번역 결과에서 각 부분의 placeholder 복원
+        """
+        try:
+            # 구분선으로 두 부분으로 나누기
+            parts = text.split(separator)
+            
+            if len(parts) >= 2:
+                # 각 부분에서 placeholder 복원
+                system_part = self._restore_placeholders(parts[0], system_map)
+                main_part = self._restore_placeholders(parts[1], main_map)
+                return f"{system_part}{separator}{main_part}"
+            else:
+                # 구분선이 없으면 전체에 대해 모든 placeholder 복원 시도
+                combined_map = {**system_map, **main_map}
+                return self._restore_placeholders(text, combined_map)
+        except Exception as e:
+            print(f"Error restoring combined placeholders: {e}")
+            # 오류 발생 시 모든 placeholder 복원 시도
+            combined_map = {**system_map, **main_map}
+            return self._restore_placeholders(text, combined_map)
+    
+    def on_prompts_translation_finished(self, translated_text: str, system_map: dict, main_map: dict, separator: str, cache_key: str):
+        """프롬프트들 번역 완료 처리"""
         try:
             # Placeholder 복원
-            final_translation = self._restore_placeholders(translated_text, placeholder_map)
+            final_translation = self._restore_combined_placeholders(
+                translated_text, 
+                system_map, 
+                main_map,
+                separator
+            )
             
             # 캐시에 저장 (placeholder 복원 전 상태로)
             self.translation_cache[cache_key] = translated_text
@@ -3047,17 +3138,17 @@ class PromptEditor(QWidget):
                 self.translate_popup.show_translation_result(final_translation)
                 
         except Exception as e:
-            print(f"Error handling main prompt translation completion: {e}")
+            print(f"Error handling prompts translation completion: {e}")
             if hasattr(self, 'translate_popup') and self.translate_popup:
                 self.translate_popup.show_translation_error(str(e))
     
-    def on_main_prompt_translation_error(self, error_message: str):
-        """Main Prompt 번역 오류 처리"""
+    def on_prompts_translation_error(self, error_message: str):
+        """프롬프트들 번역 오류 처리"""
         try:
             if hasattr(self, 'translate_popup') and self.translate_popup:
                 self.translate_popup.show_translation_error(error_message)
         except Exception as e:
-            print(f"Error handling main prompt translation error: {e}")
+            print(f"Error handling prompts translation error: {e}")
     
     def apply_theme(self, is_dark: bool):
         """Apply theme to the widget"""
