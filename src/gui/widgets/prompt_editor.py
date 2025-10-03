@@ -18,7 +18,9 @@ import hashlib
 from datetime import datetime
 
 from ..utils.db_client import DatabaseClient
+from ..utils.prompt_improvement import PromptImprovementManager
 from .version_comparison_dialog import VersionComparisonDialog
+from .prompt_improvement_dialog import PromptImprovementDialog
 
 
 class TokenCalculationThread(QThread):
@@ -48,6 +50,95 @@ class TokenCalculationThread(QThread):
                 'error': str(e),
                 'message': f'Error: {str(e)}'
             })
+
+
+class ImprovePromptThread(QThread):
+    """Thread for improving prompt using LLM"""
+    
+    finished = pyqtSignal(str)  # improved text
+    error = pyqtSignal(str)     # error message
+    
+    def __init__(self, db_client: DatabaseClient, improvement_prompt: str, endpoint: Optional[Dict[str, Any]]):
+        super().__init__()
+        self.db_client = db_client
+        self.improvement_prompt = improvement_prompt
+        self.endpoint = endpoint
+        
+    def run(self):
+        """Run the improvement call"""
+        try:
+            if not self.endpoint:
+                self.error.emit("No LLM endpoint available for improvement")
+                return
+                
+            # Prepare improvement prompt
+            system_prompt = "You are an expert prompt engineer. Your task is to improve prompts to make them clearer, more effective, and better structured for LLMs. Provide only the improved prompt without any additional explanations or comments."
+            
+            # Prepare API request
+            base_url = self.endpoint.get('baseUrl', '').rstrip('/')
+            api_key = self.endpoint.get('apiKey', '')
+            model = self.endpoint.get('defaultModel', 'gpt-3.5-turbo')
+            
+            if not base_url or not api_key:
+                self.error.emit("Missing endpoint URL or API key")
+                return
+                
+            # Make API call
+            import requests
+            chat_url = f"{base_url}/chat/completions"
+            
+            headers = {
+                'Authorization': f'Bearer {api_key}',
+                'Content-Type': 'application/json'
+            }
+            
+            payload = {
+                'model': model,
+                'messages': [
+                    {
+                        'role': 'system',
+                        'content': system_prompt
+                    },
+                    {
+                        'role': 'user', 
+                        'content': self.improvement_prompt
+                    }
+                ],
+                'temperature': 0.7
+            }
+            
+            response = requests.post(
+                chat_url,
+                headers=headers,
+                json=payload,
+                timeout=60,
+                verify=True
+            )
+            
+            if response.status_code != 200:
+                self.error.emit(f"Improvement API call failed: HTTP {response.status_code} - {response.text}")
+                return
+                
+            result_data = response.json()
+            
+            # Extract improved content
+            if 'choices' in result_data and result_data['choices']:
+                improved_text = result_data['choices'][0].get('message', {}).get('content', '')
+                if improved_text:
+                    self.finished.emit(improved_text)
+                else:
+                    self.error.emit("No improved content received from API")
+            else:
+                self.error.emit("Invalid response format from improvement API")
+                
+        except requests.exceptions.Timeout:
+            self.error.emit("Improvement request timed out after 1 minute")
+        except requests.exceptions.ConnectionError:
+            self.error.emit("Could not connect to LLM endpoint for improvement")
+        except requests.exceptions.SSLError:
+            self.error.emit("SSL certificate verification failed")
+        except Exception as e:
+            self.error.emit(f"Improvement error: {str(e)}")
 
 
 class VariableHighlighter(QSyntaxHighlighter):
@@ -1189,6 +1280,25 @@ class PromptEditor(QWidget):
             }
         """)
         
+        self.improve_btn = QPushButton("🔧 Improve")
+        self.improve_btn.clicked.connect(self.improve_prompt)
+        self.improve_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #9b59b6;
+                color: white;
+                border: 2px solid transparent;
+                padding: 6px 12px;
+                border-radius: 4px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #8e44ad;
+            }
+            QPushButton:pressed {
+                background-color: #7d3c98;
+            }
+        """)
+        
         self.translate_btn = QPushButton("🌐 Translate")
         self.translate_btn.clicked.connect(self.translate_prompts)
         self.translate_btn.setStyleSheet("""
@@ -1228,6 +1338,7 @@ class PromptEditor(QWidget):
         """)
         
         actions_layout.addWidget(self.preview_btn)
+        actions_layout.addWidget(self.improve_btn)
         actions_layout.addWidget(self.translate_btn)
         actions_layout.addWidget(self.save_btn)
         
@@ -2930,6 +3041,196 @@ class PromptEditor(QWidget):
             
         except Exception as e:
             print(f"Error resetting version selection: {e}")
+    
+    def improve_prompt(self):
+        """프롬프트 개선 기능"""
+        try:
+            # Main Prompt 텍스트 가져오기
+            if not hasattr(self, 'main_prompt_edit') or not self.main_prompt_edit:
+                QMessageBox.warning(self, "No Content", "프롬프트가 없습니다. 버전을 선택해주세요.")
+                return
+            
+            main_prompt_text = self.main_prompt_edit.toPlainText()
+            
+            if not main_prompt_text or not main_prompt_text.strip():
+                QMessageBox.warning(self, "No Content", "개선할 프롬프트 내용이 없습니다.")
+                return
+            
+            # Active endpoint 확인
+            endpoints_data = self.db_client.get_llm_endpoints()
+            active_endpoint_id = endpoints_data.get('activeEndpointId')
+            
+            if not active_endpoint_id:
+                QMessageBox.warning(
+                    self,
+                    "No LLM Provider",
+                    "프롬프트 개선을 위해서는 활성화된 LLM 공급자가 필요합니다.\n설정에서 LLM 공급자를 설정해주세요."
+                )
+                return
+            
+            # Active endpoint 찾기
+            active_endpoint = None
+            for ep in endpoints_data.get('endpoints', []):
+                if ep.get('id') == active_endpoint_id:
+                    active_endpoint = ep
+                    break
+            
+            if not active_endpoint:
+                QMessageBox.warning(
+                    self,
+                    "Endpoint Not Found",
+                    "활성화된 LLM 엔드포인트를 찾을 수 없습니다."
+                )
+                return
+            
+            # 개선 방법론 선택 다이얼로그 표시
+            improvement_dialog = PromptImprovementDialog(self)
+            improvement_dialog.improvement_selected.connect(
+                lambda method_id, template: self.start_improvement(
+                    method_id, template, main_prompt_text, active_endpoint
+                )
+            )
+            improvement_dialog.exec()
+            
+        except Exception as e:
+            QMessageBox.critical(
+                self,
+                "Improvement Error",
+                f"프롬프트 개선 중 예상치 못한 오류가 발생했습니다:\n{str(e)}"
+            )
+    
+    def start_improvement(self, method_id: str, template: str, main_prompt: str, endpoint: Dict[str, Any]):
+        """개선 프로세스 시작"""
+        try:
+            # 지연 import로 순환 참조 방지
+            from .result_viewer import TranslatePopup
+            
+            # PromptImprovementManager를 사용하여 템플릿에 main_prompt 적용
+            improvement_manager = PromptImprovementManager()
+            improvement_prompt = improvement_manager.apply_template(template, main_prompt)
+            
+            # TranslatePopup 재사용 (개선 결과 표시용)
+            self.improvement_popup = TranslatePopup(main_prompt, self)
+            self.improvement_popup.setWindowTitle("프롬프트 개선 결과")
+            
+            # 팝업 레이아웃 수정
+            if hasattr(self.improvement_popup, 'original_text_widget'):
+                # 원본 텍스트 그룹 박스 제목 변경
+                for widget in self.improvement_popup.findChildren(QGroupBox):
+                    if "원본" in widget.title() or "Original" in widget.title():
+                        widget.setTitle("원본 프롬프트 (Original Prompt)")
+                        break
+            
+            if hasattr(self.improvement_popup, 'translation_text_widget'):
+                # 번역 결과 그룹 박스 제목 변경
+                for widget in self.improvement_popup.findChildren(QGroupBox):
+                    if "번역" in widget.title() or "Translation" in widget.title():
+                        widget.setTitle("개선된 프롬프트 (Improved Prompt)")
+                        break
+            
+            self.improvement_popup.show_translation_progress()
+            self.improvement_popup.show()
+            
+            # 상태 메시지 업데이트
+            if hasattr(self.improvement_popup, 'status_label'):
+                self.improvement_popup.status_label.setText("AI가 프롬프트를 개선하고 있습니다...")
+            
+            # ImprovePromptThread 시작
+            self.improvement_thread = ImprovePromptThread(
+                self.db_client,
+                improvement_prompt,
+                endpoint
+            )
+            
+            # 시그널 연결
+            self.improvement_thread.finished.connect(self.on_improvement_finished)
+            self.improvement_thread.error.connect(self.on_improvement_error)
+            
+            # 개선 시작
+            self.improvement_thread.start()
+            
+        except Exception as e:
+            QMessageBox.critical(
+                self,
+                "Improvement Error",
+                f"개선 시작 중 오류가 발생했습니다:\n{str(e)}"
+            )
+    
+    def on_improvement_finished(self, improved_text: str):
+        """프롬프트 개선 완료 처리"""
+        try:
+            if hasattr(self, 'improvement_popup') and self.improvement_popup:
+                self.improvement_popup.show_translation_result(improved_text)
+                
+                # 개선된 프롬프트를 에디터에 적용하는 버튼 추가
+                if hasattr(self.improvement_popup, 'copy_button'):
+                    # 기존 복사 버튼 옆에 적용 버튼 추가
+                    apply_button = QPushButton("✅ 적용하기")
+                    apply_button.setStyleSheet("""
+                        QPushButton {
+                            background-color: #28a745;
+                            color: white;
+                            border: none;
+                            padding: 10px 20px;
+                            border-radius: 5px;
+                            font-size: 12px;
+                            font-weight: 500;
+                            min-width: 120px;
+                        }
+                        QPushButton:hover {
+                            background-color: #218838;
+                        }
+                    """)
+                    
+                    # 적용 버튼 클릭 시 개선된 텍스트를 에디터에 적용
+                    apply_button.clicked.connect(
+                        lambda: self.apply_improved_prompt(improved_text)
+                    )
+                    
+                    # 버튼 레이아웃에 추가
+                    button_layout = self.improvement_popup.copy_button.parent().layout()
+                    if button_layout:
+                        # 복사 버튼 앞에 적용 버튼 추가
+                        button_layout.insertWidget(
+                            button_layout.indexOf(self.improvement_popup.copy_button),
+                            apply_button
+                        )
+                
+        except Exception as e:
+            print(f"Error handling improvement completion: {e}")
+            if hasattr(self, 'improvement_popup') and self.improvement_popup:
+                self.improvement_popup.show_translation_error(str(e))
+    
+    def on_improvement_error(self, error_message: str):
+        """프롬프트 개선 오류 처리"""
+        try:
+            if hasattr(self, 'improvement_popup') and self.improvement_popup:
+                self.improvement_popup.show_translation_error(error_message)
+        except Exception as e:
+            print(f"Error handling improvement error: {e}")
+    
+    def apply_improved_prompt(self, improved_text: str):
+        """개선된 프롬프트를 에디터에 적용"""
+        try:
+            if hasattr(self, 'main_prompt_edit') and self.main_prompt_edit:
+                self.main_prompt_edit.setPlainText(improved_text)
+                
+                # 팝업 닫기
+                if hasattr(self, 'improvement_popup') and self.improvement_popup:
+                    self.improvement_popup.close()
+                
+                QMessageBox.information(
+                    self,
+                    "적용 완료",
+                    "개선된 프롬프트가 에디터에 적용되었습니다.\n변경사항을 저장하려면 '💾 Save' 버튼을 클릭하세요."
+                )
+                
+        except Exception as e:
+            QMessageBox.critical(
+                self,
+                "적용 오류",
+                f"개선된 프롬프트를 적용하는 중 오류가 발생했습니다:\n{str(e)}"
+            )
     
     def translate_prompts(self):
         """System Prompt와 Main Prompt를 한국어로 번역"""
