@@ -14,6 +14,7 @@ class PromptImprovementManager:
     def __init__(self):
         self.improvement_methods: List[Dict] = []
         self.custom_template: Dict = {}
+        self.self_discover_templates: Dict = {}
         self.load_templates()
         
     def load_templates(self):
@@ -33,8 +34,11 @@ class PromptImprovementManager:
                 
             self.improvement_methods = config.get('improvement_methods', [])
             self.custom_template = config.get('custom_template', {})
+            self.self_discover_templates = config.get('self_discover_templates', {})
             
             print(f"Loaded {len(self.improvement_methods)} improvement methods from config")
+            if self.self_discover_templates:
+                print(f"Loaded Self-Discover templates: {list(self.self_discover_templates.keys())}")
             
         except Exception as e:
             print(f"Error loading improvement templates: {e}")
@@ -88,3 +92,46 @@ class PromptImprovementManager:
             method.get('id', ''): method.get('description', '')
             for method in self.improvement_methods
         }
+    
+    def is_multi_stage_method(self, method_id: str) -> bool:
+        """특정 메서드가 다단계 프로세스인지 확인"""
+        method = self.get_method_by_id(method_id)
+        return method is not None and method.get('is_multi_stage', False)
+    
+    def get_self_discover_templates(self) -> Dict:
+        """Self-Discover 템플릿들 반환"""
+        return self.self_discover_templates.copy()
+    
+    def get_self_discover_stage_template(self, stage: str) -> Optional[str]:
+        """특정 단계의 Self-Discover 템플릿 반환
+        
+        Args:
+            stage: 'stage1_select', 'stage1_adapt', 'stage1_implement', 'stage2_solve'
+            
+        Returns:
+            해당 단계의 템플릿 문자열, 없으면 None
+        """
+        return self.self_discover_templates.get(stage)
+    
+    def apply_self_discover_template(self, stage: str, **kwargs) -> Optional[str]:
+        """Self-Discover 템플릿에 변수를 적용
+        
+        Args:
+            stage: 템플릿 단계
+            **kwargs: 템플릿 변수들 (main_prompt, selected_modules, adapted_modules, reasoning_structure 등)
+            
+        Returns:
+            변수가 적용된 템플릿 문자열
+        """
+        template = self.get_self_discover_stage_template(stage)
+        if not template:
+            return None
+        
+        # Replace all provided variables in the template
+        result = template
+        for key, value in kwargs.items():
+            placeholder = f"{{{key}}}"
+            if placeholder in result:
+                result = result.replace(placeholder, str(value))
+        
+        return result

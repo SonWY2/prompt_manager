@@ -21,6 +21,7 @@ from ..utils.db_client import DatabaseClient
 from ..utils.prompt_improvement import PromptImprovementManager
 from .version_comparison_dialog import VersionComparisonDialog
 from .prompt_improvement_dialog import PromptImprovementDialog
+from .self_discover_wizard_dialog import SelfDiscoverWizardDialog
 
 
 class TokenCalculationThread(QThread):
@@ -3102,11 +3103,20 @@ class PromptEditor(QWidget):
     def start_improvement(self, method_id: str, template: str, main_prompt: str, endpoint: Dict[str, Any]):
         """개선 프로세스 시작"""
         try:
+            # Self-Discover 방법론인지 확인
+            improvement_manager = PromptImprovementManager()
+            
+            if improvement_manager.is_multi_stage_method(method_id):
+                # Self-Discover 위저드 실행
+                wizard = SelfDiscoverWizardDialog(main_prompt, endpoint, self)
+                wizard.improvement_completed.connect(self.apply_improved_prompt)
+                wizard.exec()
+                return
+            
             # 지연 import로 순환 참조 방지
             from .result_viewer import TranslatePopup
             
             # PromptImprovementManager를 사용하여 템플릿에 main_prompt 적용
-            improvement_manager = PromptImprovementManager()
             improvement_prompt = improvement_manager.apply_template(template, main_prompt)
             
             # TranslatePopup 재사용 (개선 결과 표시용)

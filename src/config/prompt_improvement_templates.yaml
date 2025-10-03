@@ -491,6 +491,182 @@ improvement_methods:
 
       Begin your analysis.
 
+  - id: "self_discover"
+    name: "Self-Discover (고급 - 3단계)"
+    description: "3단계 reasoning 구조화를 통한 체계적 프롬프트 개선 (SELECT → ADAPT → IMPLEMENT)"
+    icon: "🔍"
+    is_multi_stage: true
+    template: "self_discover"  # Special marker for multi-stage process
+
+# Self-Discover Templates
+self_discover_templates:
+  stage1_select: |
+    # SELECT Meta-Prompt for Self-Discover
+
+    ## Instructions
+
+    Select several reasoning modules that are crucial to utilize in solving the given task. All reasoning modules are described below:
+
+    ## Reasoning Modules
+
+    1. How could I devise an experiment to help solve that problem?
+    2. Make a list of ideas for solving this problem, and apply them one by one to the problem to see if any progress can be made.
+    3. How could I measure progress on this problem?
+    4. How can I simplify the problem so that it is easier to solve?
+    5. What are the key assumptions underlying this problem?
+    6. What are the potential risks and drawbacks of each solution?
+    7. What are the alternative perspectives or viewpoints on this problem?
+    8. What are the long-term implications of this problem and its solutions?
+    9. How can I break down this problem into smaller, more manageable parts?
+    10. Critical Thinking: This style involves analyzing the problem from different perspectives, questioning assumptions, and evaluating the evidence or information available. It focuses on logical reasoning, evidence-based decision-making, and identifying potential biases or flaws in thinking.
+    11. Try creative thinking, generate innovative and out-of-the-box ideas to solve the problem. Explore unconventional solutions, thinking beyond traditional boundaries, and encouraging imagination and originality.
+    12. Seek input and collaboration from others to solve the problem. Emphasize teamwork, open communication, and leveraging the diverse perspectives and expertise of a group to come up with effective solutions.
+    13. Use systems thinking: Consider the problem as part of a larger system and understanding the interconnectedness of various elements. Focuses on identifying the underlying causes, feedback loops, and interdependencies that influence the problem, and developing holistic solutions that address the system as a whole.
+    14. Use Risk Analysis: Evaluate potential risks, uncertainties, and tradeoffs associated with different solutions or approaches to a problem. Emphasize assessing the potential consequences and likelihood of success or failure, and making informed decisions based on a balanced analysis of risks and benefits.
+    15. Use Reflective Thinking: Step back from the problem, take the time for introspection and self-reflection. Examine personal biases, assumptions, and mental models that may influence problem-solving, and being open to learning from past experiences to improve future approaches.
+    16. What is the core issue or problem that needs to be addressed?
+    17. What are the underlying causes or factors contributing to the problem?
+    18. Are there any potential solutions or strategies that have been tried before? If yes, what were the outcomes and lessons learned?
+    19. What are the potential obstacles or challenges that might arise in solving this problem?
+    20. Are there any relevant data or information that can provide insights into the problem? If yes, what data sources are available, and how can they be analyzed?
+    21. Are there any stakeholders or individuals who are directly affected by the problem? What are their perspectives and needs?
+    22. What resources (financial, human, technological, etc.) are needed to tackle the problem effectively?
+    23. How can progress or success in solving the problem be measured or evaluated?
+    24. What indicators or metrics can be used?
+    25. Is the problem a technical or practical one that requires a specific expertise or skill set? Or is it more of a conceptual or theoretical problem?
+    26. Does the problem involve a physical constraint, such as limited resources, infrastructure, or space?
+    27. Is the problem related to human behavior, such as a social, cultural, or psychological issue?
+    28. Does the problem involve decision-making or planning, where choices need to be made under uncertainty or with competing objectives?
+    29. Is the problem an analytical one that requires data analysis, modeling, or optimization techniques?
+    30. Is the problem a design challenge that requires creative solutions and innovation?
+    31. Does the problem require addressing systemic or structural issues rather than just individual instances?
+    32. Is the problem time-sensitive or urgent, requiring immediate attention and action?
+    33. What kinds of solution typically are produced for this kind of problem specification?
+    34. Given the problem specification and the current best solution, have a guess about other possible solutions.
+    35. Let's imagine the current best solution is totally wrong, what other ways are there to think about the problem specification?
+    36. What is the best way to modify this current best solution, given what you know about these kinds of problem specification?
+    37. Ignoring the current best solution, create an entirely new solution to the problem.
+    38. Let's think step by step.
+    39. Let's make a step by step plan and implement it with good notion and explanation.
+
+    ## Your Task
+
+    Based on the prompt shown below, select the reasoning modules that are most relevant and useful for improving this type of prompt. Consider which approaches would be most effective given the nature of the task.
+
+    ## Original Prompt
+    ```
+    {main_prompt}
+    ```
+
+    Output your selection as a numbered list of the selected reasoning module numbers and their descriptions. For example:
+    
+    Selected Modules:
+    1. Module 4: How can I simplify the problem so that it is easier to solve?
+    2. Module 9: How can I break down this problem into smaller, more manageable parts?
+    3. Module 16: What is the core issue or problem that needs to be addressed?
+
+  stage1_adapt: |
+    # ADAPT Meta-Prompt for Self-Discover
+
+    ## Instructions
+
+    Rephrase and specify each of the following reasoning module descriptions to make them more specific and helpful for improving the particular prompt shown below.
+
+    ## Selected Reasoning Modules
+
+    {selected_modules}
+
+    ## Original Prompt
+
+    ```
+    {main_prompt}
+    ```
+
+    ## Your Task
+
+    For each of the selected reasoning modules listed above, adapt and rephrase the description to be more specific to improving this prompt. The adapted descriptions should:
+
+    1. Maintain the core reasoning approach of the original module
+    2. Be tailored to the specific characteristics and requirements of prompt improvement
+    3. Provide actionable guidance that is directly applicable to enhancing this type of prompt
+    4. Be more concrete and specific than the original general description
+
+    **Example of adaptation:**
+    - Original: "Break the problem into sub-problems"
+    - Adapted for prompt improvement: "Identify each component of the prompt (role, task, constraints, output format) and optimize them separately"
+
+    Output the adapted reasoning module descriptions as a numbered list, maintaining the correspondence with the original selected modules.
+
+  stage1_implement: |
+    # IMPLEMENT Meta-Prompt for Self-Discover
+
+    ## Instructions
+
+    Operationalize the adapted reasoning module descriptions into an actionable reasoning structure for improving the prompt. The structure should be in JSON format with clear step-by-step instructions.
+
+    ## Adapted Reasoning Module Descriptions
+
+    {adapted_modules}
+
+    ## Original Prompt
+
+    ```
+    {main_prompt}
+    ```
+
+    ## Your Task
+
+    Based on the adapted reasoning module descriptions provided above, create a detailed reasoning structure in JSON format for improving the given prompt. The structure should:
+
+    1. **Be in valid JSON format** with clear key-value pairs
+    2. **Specify concrete steps** that integrate the adapted reasoning modules
+    3. **Provide clear instructions** for what should be analyzed or improved at each step
+    4. **Be actionable** - someone should be able to follow this structure to systematically improve the prompt
+    5. **Include appropriate fields** such as:
+       - Prompt analysis steps
+       - Evaluation criteria
+       - Improvement actions
+       - Verification steps (if applicable)
+    6. **Use descriptive keys** that clearly indicate what should be done at each step
+
+    The reasoning structure should operationalize the adapted modules into a coherent, step-by-step plan for prompt improvement.
+
+    **Output only the JSON reasoning structure without additional commentary.**
+
+  stage2_solve: |
+    # Stage 2: Improving Prompt with Discovered Reasoning Structure
+
+    ## Instructions
+
+    Follow the step-by-step reasoning plan in JSON format below to systematically improve the given prompt. Work through each step, providing concrete analysis and improvements as they apply to this particular prompt.
+
+    ## Reasoning Structure
+
+    {reasoning_structure}
+
+    ## Original Prompt
+
+    ```
+    {main_prompt}
+    ```
+
+    ## Your Task
+
+    1. **Follow the reasoning structure above step by step**
+    2. **For each key in the JSON structure**, provide your specific analysis and improvements as they apply to this particular prompt
+    3. **Work through each step sequentially**, building upon previous steps
+    4. **Be concrete and specific** - use actual information from the prompt, not generic descriptions
+    5. **Arrive at a final improved prompt** by completing all steps in the reasoning structure
+
+    ## Output Format
+
+    Work through each step of the reasoning structure, then provide:
+
+    **Improved Prompt:**
+    [Your complete improved prompt here - provide ONLY the improved prompt without explanations or meta-commentary]
+
+    Begin improving the prompt now by following the reasoning structure.
+
 # Custom prompt template
 custom_template:
   id: "custom"
