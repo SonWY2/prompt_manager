@@ -1,0 +1,20 @@
+# Requirements for building standalone executable
+# Install with: pip install -r requirements-build.txt
+
+# Core requirements (from requirements-gui.txt)
+PyQt6>=6.5.0
+requests>=2.31.0
+
+# Build tool
+pyinstaller>=5.13.0
+
+# Note: Also includes dependencies from requirements.txt:
+# - fastapi
+# - uvicorn[standard]
+# - pydantic
+# - python-dotenv
+# - tinydb
+# - aiohttp
+
+# However, the GUI version doesn't need fastapi/uvicorn since it uses 
+# direct SQLite connection instead of the API server
