@@ -4,8 +4,21 @@ Prompt Improvement Utility
 """
 
 import yaml
+import sys
 from pathlib import Path
 from typing import Dict, List, Optional
+
+
+def get_resource_path(relative_path: str) -> Path:
+    """Get absolute path to resource, works for dev and for PyInstaller"""
+    if getattr(sys, 'frozen', False):
+        # Running as compiled executable - use _MEIPASS
+        base_path = Path(sys._MEIPASS)
+    else:
+        # Running in development
+        base_path = Path(__file__).parent.parent.parent
+    
+    return base_path / relative_path
 
 
 class PromptImprovementManager:
@@ -20,8 +33,8 @@ class PromptImprovementManager:
     def load_templates(self):
         """YAML 파일에서 개선 템플릿을 로드"""
         try:
-            # Get config file path
-            config_path = Path(__file__).parent.parent.parent / "config" / "prompt_improvement_templates.yaml"
+            # Get config file path - works for both dev and bundled exe
+            config_path = get_resource_path("src/config/prompt_improvement_templates.yaml")
             
             if not config_path.exists():
                 print(f"Warning: Config file not found at {config_path}")

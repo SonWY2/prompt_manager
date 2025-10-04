@@ -1,13 +1,48 @@
 import sqlite3
 import json
 import os
+import sys
 from datetime import datetime
 from typing import Dict, Any, List, Optional
 import uuid
 
+
+def get_application_path():
+    """Get the application's base path, works for both dev and bundled exe"""
+    if getattr(sys, 'frozen', False):
+        # Running as compiled executable
+        return os.path.dirname(sys.executable)
+    else:
+        # Running in development
+        return os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+
+def get_user_data_path():
+    """Get user data directory for storing database and settings"""
+    if getattr(sys, 'frozen', False):
+        # For bundled exe, use AppData
+        app_data = os.environ.get('APPDATA', os.path.expanduser('~'))
+        data_dir = os.path.join(app_data, 'PromptManager')
+        os.makedirs(data_dir, exist_ok=True)
+        return data_dir
+    else:
+        # For development, use project directory
+        return get_application_path()
+
 class PromptManagerDB:
-    def __init__(self, db_path: str = "data/prompt_manager.db"):
+    def __init__(self, db_path: str = None):
         """SQLite 데이터베이스 초기화"""
+        
+        if db_path is None:
+            # Determine appropriate data path
+            if getattr(sys, 'frozen', False):
+                # Running as bundled exe - use AppData
+                user_data = get_user_data_path()
+                db_path = os.path.join(user_data, 'data', 'prompt_manager.db')
+            else:
+                # Running in development
+                base_path = get_application_path()
+                db_path = os.path.join(base_path, 'src', 'backend', 'data', 'prompt_manager.db')
         
         # data 디렉토리 생성
         os.makedirs(os.path.dirname(db_path), exist_ok=True)
