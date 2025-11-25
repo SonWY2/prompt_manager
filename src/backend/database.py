@@ -45,6 +45,7 @@ class PromptManagerDB:
                 db_path = os.path.join(base_path, 'src', 'backend', 'data', 'prompt_manager.db')
         
         # data 디렉토리 생성
+        db_path = os.path.abspath(db_path)
         os.makedirs(os.path.dirname(db_path), exist_ok=True)
         
         self.db_path = db_path

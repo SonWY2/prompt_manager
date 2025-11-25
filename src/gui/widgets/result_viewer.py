@@ -1495,10 +1495,10 @@ class ResultDetail(QWidget):
 class ResultViewer(QWidget):
     """Main result viewer widget"""
     
-    def __init__(self):
+    def __init__(self, db_client: Optional[DatabaseClient] = None):
         super().__init__()
         
-        self.db_client = DatabaseClient()
+        self.db_client = db_client or DatabaseClient()
         self.current_task_id: Optional[str] = None
         self.current_version_id: Optional[str] = None
         self.task_data: Optional[Dict[str, Any]] = None

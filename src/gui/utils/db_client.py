@@ -16,7 +16,7 @@ from urllib.parse import urljoin
 backend_path = Path(__file__).parent.parent.parent / "backend"
 sys.path.insert(0, str(backend_path))
 
-from database import PromptManagerDB
+from database import PromptManagerDB, get_user_data_path
 
 
 class DatabaseClient:
@@ -25,12 +25,69 @@ class DatabaseClient:
     def __init__(self, db_path: str = None):
         """Initialize database client"""
         if db_path is None:
-            # Use the same database path as backend
-            project_root = Path(__file__).parent.parent.parent.parent
-            db_path = project_root / "src" / "backend" / "data" / "prompt_manager.db"
+            if getattr(sys, 'frozen', False):
+                # Running as exe - use AppData directory
+                user_data = get_user_data_path()
+                db_path = os.path.join(user_data, 'data', 'prompt_manager.db')
+            else:
+                # Running in development - use project directory
+                project_root = Path(__file__).parent.parent.parent.parent
+                db_path = project_root / "src" / "backend" / "data" / "prompt_manager.db"
         
         self.db = PromptManagerDB(str(db_path))
         
+    def switch_database(self, new_db_path: str) -> bool:
+        """Switch to a different database file"""
+        try:
+            # Create new DB instance with the new path
+            # This will initialize the DB if it doesn't exist
+            self.db = PromptManagerDB(new_db_path)
+            return True
+        except Exception as e:
+            print(f"Error switching database: {e}")
+            return False
+
+    def save_database_as(self, target_path: str) -> bool:
+        """Save current database as a new file and switch to it"""
+        try:
+            import sqlite3
+            
+            # Ensure target directory exists
+            os.makedirs(os.path.dirname(target_path), exist_ok=True)
+            
+            # If target file exists, remove it to ensure we start with a clean slate
+            # This prevents "file is not a database" error if the file exists but is not a valid DB
+            if os.path.exists(target_path):
+                try:
+                    os.remove(target_path)
+                except OSError as e:
+                    print(f"Error removing existing target file: {e}")
+                    # If we can't remove it, we might fail later, but let's try to proceed or return False
+                    # If it's open by another process, we can't overwrite it anyway.
+                    return False
+            
+            # Use SQLite Backup API for safe live backup
+            # 1. Connect to destination (creates file if not exists)
+            dest_conn = sqlite3.connect(target_path)
+            
+            # 2. Connect to source
+            # We use a fresh connection to the current DB path
+            source_conn = sqlite3.connect(self.db.db_path)
+            
+            # 3. Perform backup
+            source_conn.backup(dest_conn)
+            
+            # 4. Close connections
+            source_conn.close()
+            dest_conn.close()
+            
+            # Switch to the new database
+            return self.switch_database(target_path)
+            
+        except Exception as e:
+            print(f"Error saving database as: {e}")
+            return False
+            
     def check_connection(self) -> bool:
         """Check if database connection is working"""
         try:

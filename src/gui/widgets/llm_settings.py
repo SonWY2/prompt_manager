@@ -533,10 +533,10 @@ class EndpointForm(QWidget):
 class LLMSettingsWidget(QWidget):
     """Main LLM settings widget"""
     
-    def __init__(self):
+    def __init__(self, db_client: Optional[DatabaseClient] = None):
         super().__init__()
         
-        self.db_client = DatabaseClient()
+        self.db_client = db_client or DatabaseClient()
         self.endpoints: List[Dict[str, Any]] = []
         self.active_endpoint_id: Optional[str] = None
         self.default_endpoint_id: Optional[str] = None

@@ -195,10 +195,10 @@ class TaskNavigator(QWidget):
     task_created = pyqtSignal(str)   # task_id
     task_deleted = pyqtSignal(str)   # task_id
     
-    def __init__(self):
+    def __init__(self, db_client: Optional[DatabaseClient] = None):
         super().__init__()
         
-        self.db_client = DatabaseClient()
+        self.db_client = db_client or DatabaseClient()
         self.tasks: Dict[str, Any] = {}
         self.current_task_id: Optional[str] = None
         self.current_filter = "all"  # all, recent, favorites

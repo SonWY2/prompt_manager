@@ -12,7 +12,7 @@ from typing import Optional, Dict, Any
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QHBoxLayout, QVBoxLayout, QSplitter,
     QTabWidget, QStatusBar, QMenuBar, QToolBar, QMessageBox,
-    QApplication, QPushButton, QLabel, QFrame
+    QApplication, QPushButton, QLabel, QFrame, QFileDialog
 )
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QIcon, QAction, QFont, QPixmap, QScreen
@@ -41,7 +41,9 @@ class MainWindow(QMainWindow):
         self.window_state_loaded = False
         
         # Initialize managers
-        self.db_client = DatabaseClient()
+        # Load last used DB path from settings
+        self.last_db_path = self.load_last_db_path()
+        self.db_client = DatabaseClient(self.last_db_path)
         self.theme_manager = ThemeManager()
         
         # Initialize UI
@@ -92,7 +94,7 @@ class MainWindow(QMainWindow):
         
     def create_navigation_panel(self):
         """Create the left navigation panel"""
-        self.task_navigator = TaskNavigator()
+        self.task_navigator = TaskNavigator(self.db_client)
         self.main_splitter.addWidget(self.task_navigator)
         
     def create_content_area(self):
@@ -104,8 +106,8 @@ class MainWindow(QMainWindow):
         # Create content splitter for editor and right sidebar
         content_splitter = QSplitter(Qt.Orientation.Horizontal)
         
-        # Create prompt editor (left side)
-        self.prompt_editor = PromptEditor()
+        # Prompt Editor
+        self.prompt_editor = PromptEditor(self.db_client)
         content_splitter.addWidget(self.prompt_editor)
         
         # Create right sidebar with Variables and LLM Result tabs
@@ -116,8 +118,8 @@ class MainWindow(QMainWindow):
         variables_tab = self.prompt_editor.variables_editor
         self.right_sidebar.addTab(variables_tab, "📝 Variables")
         
-        # Create result viewer (without Variables tab)
-        self.result_viewer = ResultViewer()
+        # Result Viewer
+        self.result_viewer = ResultViewer(self.db_client)
         self.right_sidebar.addTab(self.result_viewer, "🤖 LLM Result")
         
         # Add right sidebar to content splitter
@@ -129,9 +131,7 @@ class MainWindow(QMainWindow):
         # Add content to main tabs
         self.main_tabs.addTab(content_splitter, "📝 Editor")
         
-        # Create LLM settings widget
-        self.llm_settings = LLMSettingsWidget()
-        self.main_tabs.addTab(self.llm_settings, "⚙️ LLM Provider")
+        self.create_llm_settings_tab()
         
         # Create welcome tab
         welcome_widget = self.create_welcome_widget()
@@ -140,6 +140,11 @@ class MainWindow(QMainWindow):
         
         self.main_splitter.addWidget(self.main_tabs)
         
+    def create_llm_settings_tab(self):
+        """Create LLM settings tab"""
+        self.llm_settings = LLMSettingsWidget(self.db_client)
+        self.main_tabs.addTab(self.llm_settings, "⚙️ LLM Provider")
+
     def create_welcome_widget(self) -> QWidget:
         """Create welcome screen widget"""
         widget = QWidget()
@@ -231,6 +236,17 @@ class MainWindow(QMainWindow):
         new_task_action.setShortcut("Ctrl+N")
         new_task_action.triggered.connect(self.task_navigator.create_new_task)
         file_menu.addAction(new_task_action)
+        
+        file_menu.addSeparator()
+        
+        # Database actions
+        save_db_as_action = QAction("Save Database &As...", self)
+        save_db_as_action.triggered.connect(self.save_database_as)
+        file_menu.addAction(save_db_as_action)
+        
+        load_db_action = QAction("&Load Database...", self)
+        load_db_action.triggered.connect(self.load_database)
+        file_menu.addAction(load_db_action)
         
         file_menu.addSeparator()
         
@@ -512,6 +528,86 @@ class MainWindow(QMainWindow):
             print(f"Failed to load window state: {e}")
             # If loading fails, use default geometry
             self.setGeometry(100, 100, 1400, 900)
+
+    def load_last_db_path(self) -> Optional[str]:
+        """Load last used database path from settings"""
+        try:
+            settings_path = Path("src/gui/settings.json")
+            if not settings_path.exists():
+                return None
+                
+            with open(settings_path, 'r') as f:
+                settings = json.load(f)
+                
+            return settings.get("last_db_path")
+        except Exception as e:
+            print(f"Failed to load last db path: {e}")
+            return None
+
+    def save_last_db_path(self, path: str):
+        """Save last used database path to settings"""
+        try:
+            settings_path = Path("src/gui/settings.json")
+            settings = {}
+            
+            if settings_path.exists():
+                with open(settings_path, 'r') as f:
+                    settings = json.load(f)
+            
+            settings["last_db_path"] = path
+            
+            with open(settings_path, 'w') as f:
+                json.dump(settings, f, indent=2)
+                
+        except Exception as e:
+            print(f"Failed to save last db path: {e}")
+
+    def save_database_as(self):
+        """Save current database as a new file"""
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Save Database As",
+            str(Path.home()),
+            "SQLite Database (*.db);;All Files (*)"
+        )
+        
+        if file_path:
+            if self.db_client.save_database_as(file_path):
+                self.save_last_db_path(file_path)
+                self.status_bar.showMessage(f"Database saved to {file_path}", 3000)
+                self.setWindowTitle(f"Prompt Manager - {Path(file_path).name}")
+                
+                # Reload data to reflect any changes (though data should be same)
+                self.load_initial_data()
+            else:
+                QMessageBox.critical(self, "Error", "Failed to save database")
+
+    def load_database(self):
+        """Load a database file"""
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Load Database",
+            str(Path.home()),
+            "SQLite Database (*.db);;All Files (*)"
+        )
+        
+        if file_path:
+            if self.db_client.switch_database(file_path):
+                self.save_last_db_path(file_path)
+                self.status_bar.showMessage(f"Database loaded from {file_path}", 3000)
+                self.setWindowTitle(f"Prompt Manager - {Path(file_path).name}")
+                
+                # Reload all data
+                self.load_initial_data()
+                
+                # Reset UI state
+                self.current_task_id = None
+                self.current_version_id = None
+                self.prompt_editor.clear()
+                self.result_viewer.clear()
+                self.main_tabs.setCurrentIndex(0) # Welcome tab
+            else:
+                QMessageBox.critical(self, "Error", "Failed to load database")
 
 
 def main():
